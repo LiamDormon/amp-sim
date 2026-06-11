@@ -8,6 +8,7 @@
 plugins {
     // Apply the org.jetbrains.kotlin.jvm Plugin to add support for Kotlin.
     alias(libs.plugins.kotlin.jvm)
+    kotlin("plugin.serialization") version "2.4.0"
 
     // Apply the application plugin to add support for building a CLI application in Java.
     application
@@ -36,6 +37,9 @@ dependencies {
 
     // JACK audio library integration.
     implementation(libs.jnajack)
+
+    // Kotlin extensions
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
