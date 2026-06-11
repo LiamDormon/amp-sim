@@ -10,23 +10,37 @@ import org.gnome.gio.ApplicationFlags
 import org.gnome.gtk.Box
 import org.gnome.gtk.Label
 import org.gnome.gtk.Orientation
+import org.example.audio.AudioEngine
 
 class App {
-    val greeting: String
-        get() {
-            return "Hello World!"
-        }
+    private val audioEngine = AudioEngine()
+
+    fun start() {
+        audioEngine.start()
+    }
+
+    fun getAudioStatus() = audioEngine.getStatus()
 }
 
 fun main(args: Array<String>) {
+    val appInstance = App()
     val app = Application("org.example.ampsim", ApplicationFlags.DEFAULT_FLAGS)
 
     app.onActivate {
+        appInstance.start()
+        val status = appInstance.getAudioStatus()
+
         val headerBar = HeaderBar()
 
         val content = Box(Orientation.VERTICAL, 12)
         content.append(headerBar)
-        content.append(Label("Hello, World!"))
+        
+        val statusLabel = Label(if (status.isConnected) {
+            "JACK Connected: ${status.sampleRate}Hz, ${status.bufferSize} samples"
+        } else {
+            "JACK Disconnected: ${status.lastError ?: "Unknown error"}"
+        })
+        content.append(statusLabel)
 
         val window = ApplicationWindow(app)
         window.setTitle("Amp Simulator")

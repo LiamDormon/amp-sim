@@ -33,6 +33,9 @@ dependencies {
     // GTK4/libadwaita Java-GI bindings.
     implementation("org.java-gi:gtk:0.15.0")
     implementation("org.java-gi:adw:0.15.0")
+
+    // JACK audio library integration.
+    implementation(libs.jnajack)
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
