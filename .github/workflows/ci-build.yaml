@@ -12,7 +12,7 @@ on:
       - master
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # We rely on libadwaita features that are only available in Gnome 49 and later
 
     steps:
       - name: Checkout Repo
