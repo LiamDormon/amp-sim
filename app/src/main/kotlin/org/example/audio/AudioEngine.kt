@@ -25,9 +25,17 @@ class AudioEngine : JackClient.AudioProcessor {
     }
 
     override fun process(input: FloatBuffer, output: FloatBuffer, nframes: Int) {
-        // Basic pass-through for now
-        for (i in 0 until nframes) {
+        input.limit(input.capacity())
+        output.limit(output.capacity())
+
+        val framesToCopy = minOf(nframes, input.capacity(), output.capacity())
+        for (i in 0 until framesToCopy) {
             output.put(i, input.get(i))
+        }
+
+        val framesToClear = minOf(nframes, output.capacity())
+        for (i in framesToCopy until framesToClear) {
+            output.put(i, 0.0f)
         }
     }
 

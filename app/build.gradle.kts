@@ -32,8 +32,8 @@ dependencies {
     implementation(libs.guava)
 
     // GTK4/libadwaita Java-GI bindings.
-    implementation("org.java-gi:gtk:0.15.0")
-    implementation("org.java-gi:adw:0.15.0")
+    implementation("org.java-gi:gtk:1.0.0-RC1")
+    implementation("org.java-gi:adw:1.0.0-RC1")
 
     // JACK audio library integration.
     implementation(libs.jnajack)
@@ -53,6 +53,31 @@ java {
 application {
     // Define the main class for the application.
     mainClass = "org.example.AppKt"
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+// Compiles Blueprint -> UI -> GResource
+tasks.register<Exec>("compileBlueprint") {
+    workingDir = project.projectDir.resolve("src/main/resources")
+    commandLine("blueprint-compiler", "compile", "gtk/mainwindow.blp", "--output", "mainwindow.ui")
+}
+
+tasks.register<Exec>("compileResources") {
+    dependsOn("compileBlueprint")
+    workingDir = project.projectDir.resolve("src/main/resources")
+    commandLine("glib-compile-resources", "--target=ampsim.gresource", "--sourcedir=.", "resources.xml")
+}
+
+tasks.named("compileKotlin") {
+    dependsOn("compileResources")
+}
+
+tasks.named<JavaExec>("run") {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
+tasks.withType(JavaExec::class) {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.named<Test>("test") {

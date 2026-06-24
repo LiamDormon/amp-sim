@@ -1,0 +1,162 @@
+// window-view-switcher-sidebar.blp
+// Scaffold using the new Adw.ViewSwitcherSidebar widget (libadwaita >= 1.9)
+// AdwViewSwitcherSidebar is backed by an AdwViewStack; each AdwViewStackPage
+// becomes a nav item with an icon, label, badge, and optional section grouping.
+using Gtk 4.0;
+using Adw 1;
+
+template $AppWindow: Adw.ApplicationWindow {
+  default-width: 960;
+  default-height: 640;
+  width-request: 360;
+  height-request: 294;
+  title: _("My App");
+  // Collapse the split view and switch the sidebar into page mode
+  // when the window becomes phone-width.
+  Adw.Breakpoint {
+    condition ("max-width: 640sp")
+
+    setters {
+      split_view.collapsed: true;
+      view_sidebar.mode: page;
+    }
+  }
+
+  content: Adw.NavigationSplitView split_view {
+    sidebar-width-fraction: 0.28;
+    min-sidebar-width: 200;
+    max-sidebar-width: 280;
+    // ── SIDEBAR PANE ────────────────────────────────────────────────────
+    sidebar: Adw.NavigationPage {
+      title: _("Navigation");
+      tag: "sidebar";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {
+          show-end-title-buttons: false;
+
+          [start]
+          Gtk.MenuButton {
+            icon-name: "open-menu-symbolic";
+            primary: true;
+            menu-model: primary_menu;
+            tooltip-text: _("Main Menu");
+          }
+        }
+
+        // AdwViewSwitcherSidebar is linked to an AdwViewStack.
+        // Activating a sidebar row automatically switches the stack page.
+        content: Adw.ViewSwitcherSidebar view_sidebar {
+          stack: content_stack;
+          mode: sidebar;
+        };
+      };
+    };
+
+    // ── CONTENT PANE ────────────────────────────────────────────────────
+    content: Adw.NavigationPage {
+      title: _("Dashboard");
+      tag: "content";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        // The ViewStack lives here; the sidebar drives which page is visible.
+        content: Adw.ViewStack content_stack {
+          vexpand: true;
+          hexpand: true;
+          // Page 1 ── Dashboard  (opens group "Main")
+          Adw.ViewStackPage {
+            name: "dashboard";
+            title: _("Dashboard");
+            icon-name: "view-grid-symbolic";
+            starts-section: true;
+            section-title: _("Main");
+
+            child: Adw.StatusPage {
+              title: _("Dashboard");
+              description: _("Dashboard");
+              icon-name: "view-grid-symbolic";
+            };
+          }
+
+          // Page 2 ── Chain Editor
+          Adw.ViewStackPage {
+            name: "editor";
+            title: _("Chain Editor");
+            icon-name: "preferences-system-sharing-symbolic";
+
+            child: Adw.StatusPage {
+              title: _("Chain Editor");
+              description: _("Not Implemented");
+              icon-name: "preferences-system-sharing-symbolic";
+            };
+          }
+
+          // Page 3 ── Presets
+          Adw.ViewStackPage {
+            name: "presets";
+            title: _("Presets");
+            icon-name: "folder-open-symbolic";
+
+            child: Adw.StatusPage {
+              title: _("Presets");
+              description: _("No presets found.");
+              icon-name: "folder-open-symbolic";
+            };
+          }
+
+          // Page 4 ── Library
+          Adw.ViewStackPage {
+            name: "library";
+            title: _("Library");
+            icon-name: "accessories-dictionary-symbolic";
+
+            child: Adw.StatusPage {
+              title: _("Library");
+              description: _("Not Implemented.");
+              icon-name: "accessories-dictionary-symbolic";
+            };
+          }
+
+          // Page 5 ── Settings
+          Adw.ViewStackPage {
+            name: "settings";
+            title: _("Settings");
+            icon-name: "applications-system-symbolic";
+            starts-section: true;
+            section-title: _("System");
+
+            child: Adw.StatusPage {
+              title: _("Settings");
+              description: _("Not Implemented.");
+              icon-name: "applications-system-symbolic";
+            };
+          }
+        };
+      };
+    };
+  };
+}
+
+// ── MENUS ──────────────────────────────────────────────────────────────────
+menu primary_menu {
+  section {
+    item {
+      label: _("_Preferences");
+      action: "app.preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "win.show-help-overlay";
+    }
+
+    item {
+      label: _("_About My App");
+      action: "app.about";
+    }
+  }
+}
