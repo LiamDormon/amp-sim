@@ -12,7 +12,7 @@ on:
       - master
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # We rely on libadwaita features that are only available in Gnome 49 and later
 
     steps:
       - name: Checkout Repo
@@ -23,6 +23,21 @@ jobs:
         with:
           java-version: '25'
           distribution: 'temurin'
+
+      - name: Set up native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            blueprint-compiler \
+            libglib2.0-bin \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libjack-jackd2-dev
+
+      - name: Verify native tools
+        run: |
+          blueprint-compiler --version
+          glib-compile-resources --version
 
       - name: Setup gradle
         uses: gradle/actions/setup-gradle@v4

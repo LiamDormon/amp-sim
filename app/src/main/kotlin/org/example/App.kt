@@ -7,15 +7,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.gnome.adw.Application
-import org.gnome.adw.ApplicationWindow
-import org.gnome.adw.HeaderBar
 import org.gnome.gio.ApplicationFlags
-import org.gnome.gtk.Box
-import org.gnome.gtk.Label
-import org.gnome.gtk.Orientation
 import org.example.audio.AudioEngine
 import org.example.persistence.ConfigManager
+import org.example.ui.AppWindow
+import org.gnome.gio.Resource
 import org.gnome.glib.GLib
+import org.javagi.gtk.types.TemplateTypes
+import java.nio.file.Paths
 
 class App {
     private val audioEngine = AudioEngine()
@@ -37,39 +36,32 @@ class App {
 }
 
 fun main(args: Array<String>) {
+    val resourceUrl = checkNotNull(App::class.java.getResource("/ampsim.gresource")) {
+        "Missing ampsim.gresource on the runtime classpath"
+    }
+    val resource = Resource.load(Paths.get(resourceUrl.toURI()).toString())
+    resource.resourcesRegister()
+    TemplateTypes.register(AppWindow::class.java)
+
     val appInstance = App()
     val app = Application("org.example.ampsim", ApplicationFlags.DEFAULT_FLAGS)
 
     app.onActivate {
         appInstance.start()
-        val status = appInstance.getAudioStatus()
 
-        val headerBar = HeaderBar()
-
-        val content = Box(Orientation.VERTICAL, 12)
-        content.append(headerBar)
-        
-        val statusLabel = Label(if (status.isConnected) {
-            "JACK Connected: ${status.sampleRate}Hz, ${status.bufferSize} samples"
-        } else {
-            "JACK Disconnected: ${status.lastError ?: "Unknown error"}"
-        })
-        content.append(statusLabel)
-
-        val window = ApplicationWindow(app)
-        window.setTitle("Amp Simulator")
+        val mainWindow = AppWindow()
+        mainWindow.setApplication(app)
 
         appInstance.uiCoroutineScope.launch {
             appInstance.configManager.config.collectLatest { config ->
                 GLib.idleAdd(0) {
-                    window.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
+                    mainWindow.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
                     false
                 }
             }
         }
 
-        window.setContent(content)
-        window.present()
+        mainWindow.present()
     }
 
     app.run(args)
