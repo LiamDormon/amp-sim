@@ -96,18 +96,22 @@ class ConfigManagerTest {
 
         manager.updateConfig { current ->
             current.copy(
-                audio = current.audio.copy(sampleRate = 48_000, bufferSize = 512),
+                audio = current.audio.copy(sampleRate = 48_000, bufferSize = 512, inputDeviceId = "system:capture_1"),
                 ui = current.ui.copy(theme = "dark")
             )
         }
 
         waitFor("updated config to be persisted") {
             val saved = readSavedConfig()
-            saved.audio.sampleRate == 48_000 && saved.audio.bufferSize == 512 && saved.ui.theme == "dark"
+            saved.audio.sampleRate == 48_000 &&
+                saved.audio.bufferSize == 512 &&
+                saved.audio.inputDeviceId == "system:capture_1" &&
+                saved.ui.theme == "dark"
         }
 
         assertEquals(48_000, manager.config.value.audio.sampleRate)
         assertEquals(512, manager.config.value.audio.bufferSize)
+        assertEquals("system:capture_1", manager.config.value.audio.inputDeviceId)
         assertEquals("dark", manager.config.value.ui.theme)
     }
 

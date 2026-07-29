@@ -47,9 +47,55 @@ template $AppWindow: Adw.ApplicationWindow {
 
         // AdwViewSwitcherSidebar is linked to an AdwViewStack.
         // Activating a sidebar row automatically switches the stack page.
-        content: Adw.ViewSwitcherSidebar view_sidebar {
-          stack: content_stack;
-          mode: sidebar;
+        content: Gtk.Box {
+          orientation: vertical;
+
+          Adw.ViewSwitcherSidebar view_sidebar {
+            stack: content_stack;
+            mode: sidebar;
+            hexpand: true;
+            vexpand: true;
+          }
+
+          // Volume visualizer and playback toggle at the bottom
+          Gtk.Separator {
+            margin-top: 6;
+            margin-bottom: 6;
+          }
+
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 6;
+            margin-start: 6;
+            margin-end: 6;
+            margin-bottom: 6;
+
+            Gtk.Label {
+              label: _("Playback");
+              styles [ "caption-heading" ]
+              xalign: 0;
+            }
+
+            // Volume level display (progress bar style)
+            Gtk.ProgressBar volume_level {
+              show-text: false;
+              pulse-step: 0.1;
+              hexpand: true;
+              styles [ "osd" ]
+            }
+
+            // Playback toggle button
+            Gtk.ToggleButton playback_toggle {
+              label: _("Enable Audio");
+              hexpand: true;
+            }
+
+            // Test signal toggle button
+            Gtk.ToggleButton test_signal_toggle {
+              label: _("Test Tone");
+              hexpand: true;
+            }
+          }
         };
       };
     };
@@ -79,6 +125,31 @@ template $AppWindow: Adw.ApplicationWindow {
               title: _("Dashboard");
               description: _("Dashboard");
               icon-name: "view-grid-symbolic";
+
+              // Temporary buttons to toggle DSP test effects on/off.
+              child: Gtk.Box {
+                orientation: vertical;
+                spacing: 12;
+                halign: center;
+                valign: center;
+
+                Gtk.Label {
+                  label: _("Test Effects");
+                  styles [ "heading" ]
+                }
+
+                Gtk.ToggleButton overdrive_toggle {
+                  label: _("Overdrive");
+                }
+
+                Gtk.ToggleButton delay_toggle {
+                  label: _("Delay");
+                }
+
+                Gtk.ToggleButton amp_toggle {
+                  label: _("Amp");
+                }
+              };
             };
           }
 
@@ -129,10 +200,29 @@ template $AppWindow: Adw.ApplicationWindow {
             starts-section: true;
             section-title: _("System");
 
-            child: Adw.StatusPage {
-              title: _("Settings");
-              description: _("Not Implemented.");
-              icon-name: "applications-system-symbolic";
+            child: Gtk.Box {
+              orientation: vertical;
+              spacing: 12;
+              margin-top: 18;
+              margin-bottom: 18;
+              margin-start: 18;
+              margin-end: 18;
+
+              Gtk.Label {
+                label: _("Audio Input");
+                xalign: 0;
+                styles [ "heading" ]
+              }
+
+              Gtk.Label {
+                label: _("Choose which JACK source should feed the amp input. If nothing is selected, the first available source will be used.");
+                wrap: true;
+                xalign: 0;
+              }
+
+              Gtk.DropDown input_device_combo {
+                hexpand: true;
+              }
             };
           }
         };

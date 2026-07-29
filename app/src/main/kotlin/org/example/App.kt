@@ -28,6 +28,27 @@ class App {
 
     fun getAudioStatus() = audioEngine.getStatus()
 
+    /** Wire the temporary dashboard test buttons to the audio engine. */
+    fun bindTestEffects(window: AppWindow) = window.bindTestEffects(audioEngine)
+
+    /** Bind audio controls (playback toggle and volume display) to the audio engine. */
+    fun bindAudioControls(window: AppWindow) = window.bindAudioControls(audioEngine)
+
+    /** Bind the audio input selector to the audio engine and persisted config. */
+    fun bindAudioInputSelector(window: AppWindow) = window.bindInputDeviceSelector(
+        engine = audioEngine,
+        selectedDeviceId = configManager.config.value.audio.inputDeviceId,
+    ) { selected ->
+        configManager.updateConfig { current ->
+            current.copy(audio = current.audio.copy(inputDeviceId = selected))
+        }
+    }
+
+    /** Update the volume display. */
+    fun updateVolumeDisplay(window: AppWindow) = window.updateVolumeDisplay(audioEngine)
+
+    fun setAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
+
     fun destroy() {
         audioEngine.stop()
         configManager.cancel()
@@ -51,11 +72,22 @@ fun main(args: Array<String>) {
 
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
+        appInstance.bindTestEffects(mainWindow)
+        appInstance.bindAudioControls(mainWindow)
+        appInstance.bindAudioInputSelector(mainWindow)
+
+        // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
+        GLib.timeoutAdd(0, 50) {
+            appInstance.updateVolumeDisplay(mainWindow)
+            true  // Keep the timeout active
+        }
 
         appInstance.uiCoroutineScope.launch {
             appInstance.configManager.config.collectLatest { config ->
                 GLib.idleAdd(0) {
                     mainWindow.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
+                    mainWindow.setInputDeviceSelection(config.audio.inputDeviceId)
+                    appInstance.setAudioInputDevice(config.audio.inputDeviceId)
                     false
                 }
             }

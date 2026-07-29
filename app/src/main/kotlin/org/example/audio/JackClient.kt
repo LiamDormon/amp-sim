@@ -61,6 +61,62 @@ class JackClient(private val clientName: String = "AmpSim") {
         client?.activate()
     }
 
+    fun availableInputSources(): List<String> = try {
+        val currentClient = client ?: return emptyList()
+        Jack.getInstance()
+            .getPorts(currentClient, null, JackPortType.AUDIO, EnumSet.of(JackPortFlags.JackPortIsOutput))
+            .toList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun availableOutputDestinations(): List<String> = try {
+        val currentClient = client ?: return emptyList()
+        Jack.getInstance()
+            .getPorts(currentClient, null, JackPortType.AUDIO, EnumSet.of(JackPortFlags.JackPortIsInput))
+            .toList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun routeAudio(inputSourcePort: String? = null) {
+        client ?: return
+        val jack = Jack.getInstance()
+        val inputName = inputPort?.name ?: return
+        val outputName = outputPort?.name ?: return
+
+        runCatching {
+            inputPort?.getConnections()?.forEach { connection ->
+                jack.disconnect(connection, inputName)
+            }
+        }
+
+        runCatching {
+            outputPort?.getConnections()?.forEach { connection ->
+                jack.disconnect(outputName, connection)
+            }
+        }
+
+        val inputSources = availableInputSources()
+        val selectedSource = when {
+            inputSourcePort != null && inputSources.contains(inputSourcePort) -> inputSourcePort
+            inputSources.isNotEmpty() -> inputSources.first()
+            else -> null
+        }
+
+        if (selectedSource != null) {
+            runCatching {
+                jack.connect(selectedSource, inputName)
+            }
+        }
+
+        availableOutputDestinations().forEach { destination ->
+            runCatching {
+                jack.connect(outputName, destination)
+            }
+        }
+    }
+
     fun close() {
         client?.deactivate()
         client?.close()
