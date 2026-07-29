@@ -31,16 +31,18 @@ class GenericOverdrive(
         val tone = getParameter("tone")
         val level = getParameter("level")
 
-        // Tone maps to low-pass coefficient: 0 -> dark, 1 -> bright (mostly bypass).
-        val a = tone.coerceIn(0f, 1f)
+        // Tone controls two things:
+        // - filterCoeff: how quickly the one-pole tracks (lower = darker, but never 0)
+        // - mix: how much unfiltered signal is blended back in (0 = fully filtered)
+        val mix = tone.coerceIn(0f, 1f)
+        val filterCoeff = 0.01f + mix * 0.99f
         var lp = lpState
 
         for (i in 0 until nframes) {
             val x = input[i]
             val driven = tanh(x * drive)
-            lp += a * (driven - lp)
-            // Blend filtered (dark) and unfiltered (bright) by tone amount.
-            val toned = lp + a * (driven - lp)
+            lp += filterCoeff * (driven - lp)
+            val toned = lp * (1f - mix) + driven * mix
             output[i] = toned * level
         }
 
