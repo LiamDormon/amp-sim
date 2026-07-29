@@ -12,6 +12,10 @@ class AppConfigurationValidationTest {
         }
 
         assertFailsWith<IllegalArgumentException> {
+            AudioConfiguration(inputDeviceId = "")
+        }
+
+        assertFailsWith<IllegalArgumentException> {
             AudioConfiguration(bufferSize = -1)
         }
 
