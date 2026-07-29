@@ -91,12 +91,6 @@ class JackClient(private val clientName: String = "AmpSim") {
             }
         }
 
-        runCatching {
-            outputPort?.getConnections()?.forEach { connection ->
-                jack.disconnect(outputName, connection)
-            }
-        }
-
         val inputSources = availableInputSources()
         val selectedSource = when {
             inputSourcePort != null && inputSources.contains(inputSourcePort) -> inputSourcePort
@@ -110,10 +104,15 @@ class JackClient(private val clientName: String = "AmpSim") {
             }
         }
 
-        availableOutputDestinations().forEach { destination ->
-            runCatching {
-                jack.connect(outputName, destination)
-            }
+        val existingOutputConnections = outputPort?.getConnections().orEmpty()
+        if (existingOutputConnections.isEmpty()) {
+            availableOutputDestinations()
+                .filter { it.startsWith("system:playback_") }
+                .forEach { destination ->
+                    runCatching {
+                        jack.connect(outputName, destination)
+                    }
+                }
         }
     }
 
