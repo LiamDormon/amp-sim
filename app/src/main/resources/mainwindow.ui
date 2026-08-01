@@ -77,25 +77,39 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                           </object>
                         </child>
                         <child>
-                          <object class="GtkProgressBar" id="volume_level">
-                            <property name="show-text">false</property>
-                            <property name="pulse-step">0.1</property>
-                            <property name="hexpand">true</property>
-                            <style>
-                              <class name="osd"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkToggleButton" id="playback_toggle">
-                            <property name="label" translatable="yes">Enable Audio</property>
-                            <property name="hexpand">true</property>
+                          <object class="GtkBox">
+                            <property name="orientation">0</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkProgressBar" id="volume_level">
+                                <property name="show-text">false</property>
+                                <property name="pulse-step">0.1</property>
+                                <property name="hexpand">true</property>
+                                <property name="valign">3</property>
+                                <style>
+                                  <class name="suggested-action"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkToggleButton" id="playback_toggle">
+                                <property name="icon-name">audio-headphones-symbolic</property>
+                                <property name="hexpand">false</property>
+                                <property name="valign">3</property>
+                                <property name="tooltip-text" translatable="yes">Audio Playback Toggle</property>
+                                <property name="accessible-role">78</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Audio Playback Toggle</property>
+                                  <property name="description" translatable="yes">Toggles system audio output on or off</property>
+                                </accessibility>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child>
                           <object class="GtkToggleButton" id="test_signal_toggle">
-                            <property name="label" translatable="yes">Test Tone</property>
                             <property name="hexpand">true</property>
+                            <property name="label" translatable="yes">Debug Tone</property>
                           </object>
                         </child>
                       </object>

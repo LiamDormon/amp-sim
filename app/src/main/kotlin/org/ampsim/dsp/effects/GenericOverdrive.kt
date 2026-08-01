@@ -1,5 +1,7 @@
-package org.ampsim.dsp
+package org.ampsim.dsp.effects
 
+import org.ampsim.dsp.BaseDSPModule
+import org.ampsim.dsp.ParameterInfo
 import kotlin.math.tanh
 
 /**

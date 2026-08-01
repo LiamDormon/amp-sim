@@ -79,6 +79,26 @@ class JackClient(private val clientName: String = "AmpSim") {
         emptyList()
     }
 
+    /**
+     * Physical playback ports (the actual hardware outputs), regardless of how
+     * the JACK/PipeWire server names them. These are input ports (they receive
+     * audio) that also carry the physical flag, so this reliably finds the
+     * headphone/speaker outputs even when they are not named `system:playback_*`.
+     */
+    private fun physicalPlaybackPorts(): List<String> = try {
+        val currentClient = client ?: return emptyList()
+        Jack.getInstance()
+            .getPorts(
+                currentClient,
+                null,
+                JackPortType.AUDIO,
+                EnumSet.of(JackPortFlags.JackPortIsInput, JackPortFlags.JackPortIsPhysical)
+            )
+            .toList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
     fun routeAudio(inputSourcePort: String? = null) {
         client ?: return
         val jack = Jack.getInstance()
@@ -106,14 +126,30 @@ class JackClient(private val clientName: String = "AmpSim") {
 
         val existingOutputConnections = outputPort?.getConnections().orEmpty()
         if (existingOutputConnections.isEmpty()) {
-            availableOutputDestinations()
-                .filter { it.startsWith("system:playback_") }
-                .forEach { destination ->
-                    runCatching {
-                        jack.connect(outputName, destination)
-                    }
+            outputDestinationsForRouting().forEach { destination ->
+                runCatching {
+                    jack.connect(outputName, destination)
                 }
+            }
         }
+    }
+
+    /**
+     * Choose the playback ports to wire the app's output to. Prefer the actual
+     * physical hardware outputs (found by flag, so they work no matter how the
+     * server names them, e.g. under PipeWire). Fall back to the conventional
+     * `system:playback_*` naming, and finally to every available destination, so
+     * audio still reaches the interface when physical ports can't be identified.
+     */
+    private fun outputDestinationsForRouting(): List<String> {
+        val physical = physicalPlaybackPorts()
+        if (physical.isNotEmpty()) return physical
+
+        val destinations = availableOutputDestinations()
+        val systemPlayback = destinations.filter { it.startsWith("system:playback_") }
+        if (systemPlayback.isNotEmpty()) return systemPlayback
+
+        return destinations
     }
 
     fun close() {

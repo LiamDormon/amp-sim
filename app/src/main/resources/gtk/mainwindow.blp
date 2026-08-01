@@ -77,23 +77,41 @@ template $AppWindow: Adw.ApplicationWindow {
             }
 
             // Volume level display (progress bar style)
-            Gtk.ProgressBar volume_level {
-              show-text: false;
-              pulse-step: 0.1;
-              hexpand: true;
-              styles [ "osd" ]
-            }
+            Gtk.Box {
+                orientation: horizontal;
+                spacing: 6;
 
-            // Playback toggle button
-            Gtk.ToggleButton playback_toggle {
-              label: _("Enable Audio");
-              hexpand: true;
+                Gtk.ProgressBar volume_level {
+                  show-text: false;
+                  pulse-step: 0.1;
+                  hexpand: true;
+                  valign: center;
+                  styles [ "suggested-action" ]
+                }
+
+                // Playback toggle button
+                Gtk.ToggleButton playback_toggle {
+                  icon-name: "audio-headphones-symbolic";
+                  hexpand: false;
+                  valign: center;
+
+                  // Hover Label (Tooltip)
+                  tooltip-text: _("Audio Playback Toggle");
+
+                  // Accessibility (GTK Accessible Interface)
+                  accessible-role: toggle_button;
+
+                  accessibility {
+                    label: _("Audio Playback Toggle");
+                    description: _("Toggles system audio output on or off");
+                  }
+                }
             }
 
             // Test signal toggle button
             Gtk.ToggleButton test_signal_toggle {
-              label: _("Test Tone");
               hexpand: true;
+              label: _("Debug Tone");
             }
           }
         };

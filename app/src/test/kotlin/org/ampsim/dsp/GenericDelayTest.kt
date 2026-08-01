@@ -1,6 +1,7 @@
 package org.ampsim.dsp
 
 import kotlinx.coroutines.runBlocking
+import org.ampsim.dsp.effects.GenericDelay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

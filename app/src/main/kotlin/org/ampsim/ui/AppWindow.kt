@@ -11,7 +11,7 @@ import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
 
-@GtkTemplate(name="AppWindow", ui = "/org/ampsim/ampsim/mainwindow.ui")
+@GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
 class AppWindow : ApplicationWindow {
     constructor() : super()
 
