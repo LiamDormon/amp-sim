@@ -106,12 +106,6 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                             </child>
                           </object>
                         </child>
-                        <child>
-                          <object class="GtkToggleButton" id="test_signal_toggle">
-                            <property name="hexpand">true</property>
-                            <property name="label" translatable="yes">Debug Tone</property>
-                          </object>
-                        </child>
                       </object>
                     </child>
                   </object>
@@ -143,39 +137,8 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         <property name="child">
                           <object class="AdwStatusPage">
                             <property name="title" translatable="yes">Dashboard</property>
-                            <property name="description" translatable="yes">Dashboard</property>
+                            <property name="description" translatable="yes">Use the Chain Editor to build your signal chain.</property>
                             <property name="icon-name">view-grid-symbolic</property>
-                            <property name="child">
-                              <object class="GtkBox">
-                                <property name="orientation">1</property>
-                                <property name="spacing">12</property>
-                                <property name="halign">3</property>
-                                <property name="valign">3</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="label" translatable="yes">Test Effects</property>
-                                    <style>
-                                      <class name="heading"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkToggleButton" id="overdrive_toggle">
-                                    <property name="label" translatable="yes">Overdrive</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkToggleButton" id="delay_toggle">
-                                    <property name="label" translatable="yes">Delay</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkToggleButton" id="amp_toggle">
-                                    <property name="label" translatable="yes">Amp</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </property>
                           </object>
                         </property>
                       </object>
@@ -186,10 +149,10 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         <property name="title" translatable="yes">Chain Editor</property>
                         <property name="icon-name">preferences-system-sharing-symbolic</property>
                         <property name="child">
-                          <object class="AdwStatusPage">
-                            <property name="title" translatable="yes">Chain Editor</property>
-                            <property name="description" translatable="yes">Not Implemented</property>
-                            <property name="icon-name">preferences-system-sharing-symbolic</property>
+                          <object class="GtkBox" id="chain_editor_host">
+                            <property name="orientation">1</property>
+                            <property name="vexpand">true</property>
+                            <property name="hexpand">true</property>
                           </object>
                         </property>
                       </object>

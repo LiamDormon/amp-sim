@@ -32,7 +32,4 @@ sealed interface AudioCommand {
 
     /** Enable or disable audio output (metering keeps running when disabled). */
     data class SetPlayback(val enabled: Boolean) : AudioCommand
-
-    /** Enable or disable the internal test-signal generator. */
-    data class SetTestSignal(val enabled: Boolean) : AudioCommand
 }

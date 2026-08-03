@@ -3,6 +3,7 @@
   <gresource prefix="/org/ampsim">
     <file>mainwindow.ui</file>
     <file>gtk/mainwindow.blp</file>
+    <file>css/chain-editor.css</file>
   </gresource>
 </gresources>
 

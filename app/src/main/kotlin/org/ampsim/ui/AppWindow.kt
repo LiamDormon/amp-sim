@@ -3,6 +3,7 @@ package org.ampsim.ui
 import java.lang.foreign.MemorySegment
 import org.gnome.adw.ApplicationWindow
 import org.gnome.adw.ViewSwitcherSidebar
+import org.gnome.gtk.Box
 import org.gnome.gtk.DropDown
 import org.gnome.gtk.ToggleButton
 import org.gnome.gtk.ProgressBar
@@ -10,6 +11,7 @@ import org.gnome.gtk.StringList
 import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
+import org.ampsim.ui.chain.ChainEditor
 
 @GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
 class AppWindow : ApplicationWindow {
@@ -21,18 +23,6 @@ class AppWindow : ApplicationWindow {
     @JvmField
     var viewSidebar: ViewSwitcherSidebar? = null
 
-    @GtkChild(name = "overdrive_toggle")
-    @JvmField
-    var overdriveToggle: ToggleButton? = null
-
-    @GtkChild(name = "delay_toggle")
-    @JvmField
-    var delayToggle: ToggleButton? = null
-
-    @GtkChild(name = "amp_toggle")
-    @JvmField
-    var ampToggle: ToggleButton? = null
-
     @GtkChild(name = "volume_level")
     @JvmField
     var volumeLevel: ProgressBar? = null
@@ -41,25 +31,20 @@ class AppWindow : ApplicationWindow {
     @JvmField
     var playbackToggle: ToggleButton? = null
 
-    @GtkChild(name = "test_signal_toggle")
-    @JvmField
-    var testSignalToggle: ToggleButton? = null
-
     @GtkChild(name = "input_device_combo")
     @JvmField
     var inputDeviceCombo: DropDown? = null
 
+    @GtkChild(name = "chain_editor_host")
+    @JvmField
+    var chainEditorHost: Box? = null
+
     private var inputDeviceSelectionGuard = false
     private var inputDeviceIds: List<String> = emptyList()
 
-    /**
-     * Wire the temporary dashboard test buttons to the audio engine so each
-     * toggle enables/disables the corresponding generic DSP effect.
-     */
-    fun bindTestEffects(engine: AudioEngine) {
-        overdriveToggle?.onToggled { engine.setOverdriveEnabled(overdriveToggle?.active ?: false) }
-        delayToggle?.onToggled { engine.setDelayEnabled(delayToggle?.active ?: false) }
-        ampToggle?.onToggled { engine.setAmpEnabled(ampToggle?.active ?: false) }
+    /** Mount the Chain Editor canvas widget into its host container. */
+    fun bindChainEditor(chainEditor: ChainEditor) {
+        chainEditorHost?.append(chainEditor)
     }
 
     /**
@@ -72,14 +57,6 @@ class AppWindow : ApplicationWindow {
                 engine.setPlaybackEnabled(active)
             }
         }
-
-        testSignalToggle?.apply {
-            active = false  // Start with test signal off
-            onToggled {
-                engine.setTestSignalEnabled(active)
-            }
-        }
-
         volumeLevel?.apply {
             fraction = 0.0
         }

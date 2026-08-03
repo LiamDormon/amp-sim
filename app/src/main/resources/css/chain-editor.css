@@ -1,0 +1,245 @@
+/* Chain Editor canvas — restrained, professional pedalboard styling.
+ *
+ * Design system:
+ *  - Colors are declared once below via @define-color and referenced by name,
+ *    instead of repeating hex literals across the file.
+ *  - One accent color (@amp_accent, warm amber) means "active/live": the
+ *    enabled toggle, a dial's value arc/readout, and hover states. Nothing
+ *    else uses color, so the accent stays meaningful instead of decorative.
+ *  - Layout values (padding, margin, gaps, radii, icon/knob sizes) are in
+ *    `em`, relative to the widget's font size, so the whole canvas scales
+ *    with GNOME's text-size accessibility setting instead of being pinned to
+ *    fixed pixels. Only true hairlines (1px borders) and shadow blur/offsets
+ *    stay in device pixels, matching how GTK's own theme treats them.
+ *  - Each unit is a single "chassis" card (.chain-unit-chassis) — the header
+ *    row and the parameter drawer share one background/border/radius and the
+ *    chassis clips its children (see ChainEditor.kt's Overflow.HIDDEN), so an
+ *    open drawer can never poke a square corner past the card's rounded edge.
+ *  - Effect type is communicated with text only, never color coding.
+ */
+
+@define-color amp_bg_top #2b2b2e;
+@define-color amp_bg_bottom #19191b;
+@define-color amp_canvas_border #050506;
+
+@define-color amp_chassis_top #46464a;
+@define-color amp_chassis_bottom #2d2d2f;
+@define-color amp_chassis_border #0a0a0b;
+
+@define-color amp_text_primary #f4f5f6;
+@define-color amp_text_muted #babfc6;
+@define-color amp_text_dim #9298a1;
+@define-color amp_text_faint #939aa4;
+
+@define-color amp_accent #e8a251;
+@define-color amp_accent_dark #b5661f;
+@define-color amp_accent_deep #c97e2e;
+@define-color amp_accent_soft #eab476;
+
+@define-color amp_dropzone #62a0ea;
+
+@define-color amp_toggle_track #19191a;
+@define-color amp_toggle_thumb #d8dade;
+
+.chain-editor {
+  padding: 0.75em;
+}
+
+.chain-editor-canvas {
+  padding: 0.875em;
+  background-color: @amp_bg_bottom;
+  background-image:
+    repeating-linear-gradient(
+      125deg,
+      alpha(#fff, 0.015) 0px,
+      alpha(#fff, 0.015) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    linear-gradient(to bottom, @amp_bg_top, @amp_bg_bottom);
+  border-radius: 0.75em;
+  border: 1px solid @amp_canvas_border;
+  box-shadow: inset 0 0.125em 0.25em alpha(#000, 0.65);
+}
+
+.chain-editor-add-button {
+  margin-top: 0.5em;
+  padding: 0.375em 1.125em;
+  font-weight: 600;
+}
+
+.chain-editor-add-button:hover {
+  color: @amp_accent_soft;
+}
+
+/* ── Chassis (the whole pedal card) ─────────────────────────────────────── */
+
+.chain-unit-row {
+  margin: 0.3125em 0.1875em;
+}
+
+.chain-unit-chassis {
+  background-image: linear-gradient(to bottom, @amp_chassis_top, @amp_chassis_bottom);
+  border: 1px solid @amp_chassis_border;
+  border-radius: 0.625em;
+  box-shadow:
+    0 0.1875em 0.3125em alpha(#000, 0.55),
+    inset 0 0.0625em 0 alpha(#fff, 0.08);
+}
+
+.chain-unit-row-content {
+  padding: 0.625em 0.875em;
+}
+
+.chain-unit-drag-handle {
+  opacity: 0.5;
+  color: @amp_text_muted;
+}
+
+.chain-unit-title {
+  font-weight: 700;
+  color: @amp_text_primary;
+}
+
+.chain-unit-type-badge {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: @amp_text_muted;
+  letter-spacing: 0.05em;
+}
+
+/* True-bypass-style LED toggle, in the single accent color, instead of a
+ * stock iOS-blue switch. */
+.chain-unit-toggle {
+  min-width: 2.375em;
+  min-height: 1.25em;
+  border-radius: 999px;
+  background-color: @amp_toggle_track;
+  border: 1px solid @amp_chassis_border;
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.7);
+}
+
+.chain-unit-toggle slider {
+  background-color: @amp_toggle_thumb;
+  border-radius: 999px;
+  box-shadow: 0 0.0625em 0.0625em alpha(#000, 0.4);
+}
+
+.chain-unit-toggle:checked {
+  background-color: @amp_accent_dark;
+  background-image: linear-gradient(to bottom, @amp_accent, @amp_accent_deep);
+  box-shadow:
+    0 0 0.375em alpha(@amp_accent, 0.5),
+    inset 0 0.0625em 0.0625em alpha(#fff, 0.25);
+}
+
+/* ── Parameter drawer ────────────────────────────────────────────────────── */
+
+.chain-unit-expander {
+  margin: 0;
+}
+
+/* The clickable header row (arrow + "Parameters" label). Same left indent
+ * as .chain-unit-row-content (0.875em) so it reads as part of the same card,
+ * not a separate strip glued underneath it. */
+.chain-unit-expander > title {
+  min-height: 0;
+  padding: 0.375em 0.875em;
+  border-top: 1px solid alpha(#000, 0.3);
+  margin-left: 2.2em;
+  margin-bottom: 0.5em;
+}
+
+/* Our own Label (set via Expander.setLabelWidget), not GTK's implicit one —
+ * Adwaita themes the implicit label as an accent-colored "expander row"
+ * summary, which fought the single-accent-color design regardless of any
+ * .chain-unit-expander > title > label override. Owning the widget directly
+ * sidesteps that entirely. */
+.chain-unit-expander-label {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: @amp_text_dim;
+  margin-left: 2.2em;
+}
+
+.chain-unit-expander > title:hover .chain-unit-expander-label {
+  color: @amp_accent_soft;
+}
+
+.chain-unit-expander > title > arrow {
+  min-width: 0.6875em;
+  min-height: 0.6875em;
+  margin-left: 2.2em;
+}
+
+/* Recessed control-panel strip the dials sit in, flush against the header
+ * above it and clipped to the chassis's own rounded corners. */
+.chain-unit-params-panel {
+  padding: 0.75em 0.625em 0.625em;
+  background-color: alpha(#000, 0.22);
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.45);
+}
+
+.chain-dial-tile {
+  padding: 0.125em 0.375em;
+}
+
+.chain-dial-name {
+  font-size: 0.68em;
+  font-weight: 700;
+  color: @amp_text_faint;
+  letter-spacing: 0.06em;
+}
+
+/* Sole source of the knob's size: Dial.kt sets no fixed content size, so this
+ * scales with the user's text size and the drawing (which reads its actual
+ * allocated width/height every frame) follows automatically. */
+.chain-dial-knob {
+  min-width: 2.75em;
+  min-height: 2.75em;
+}
+
+.chain-dial-value {
+  font-size: 0.68em;
+  font-weight: 600;
+  color: @amp_accent_soft;
+  font-family: monospace;
+  padding: 0.0625em 0.3125em;
+  background-color: #100d09;
+  border: 1px solid alpha(#000, 0.6);
+  border-radius: 0.1875em;
+}
+
+/* ── Signal-flow lead between chassis cards ──────────────────────────────── */
+
+.chain-connector {
+  min-width: 0.125em;
+  min-height: 0.875em;
+  margin: 0.0625em 0;
+  background-color: #4a4e55;
+  border-radius: 0.125em;
+}
+
+/* ── Drag interaction states ─────────────────────────────────────────────── */
+
+.chain-unit-row--dragging .chain-unit-chassis {
+  opacity: 0.5;
+}
+
+.chain-unit-row--drop-target .chain-unit-chassis {
+  border-color: @amp_dropzone;
+  box-shadow:
+    0 0 0 0.125em alpha(@amp_dropzone, 0.7),
+    0 0.1875em 0.3125em alpha(#000, 0.55);
+}
+
+/* ── Context menu (stub) ─────────────────────────────────────────────────── */
+
+.chain-unit-context-menu {
+  padding: 0.25em;
+}
+
+.chain-unit-context-menu-popover {
+  padding: 0;
+}

@@ -7,9 +7,6 @@ import java.util.logging.Logger
 import kotlinx.coroutines.runBlocking
 import org.ampsim.dsp.DSPModule
 import org.ampsim.dsp.DSPModuleFactory
-import org.ampsim.dsp.effects.GenericAmp
-import org.ampsim.dsp.effects.GenericDelay
-import org.ampsim.dsp.effects.GenericOverdrive
 import org.ampsim.model.Chain
 
 /**
@@ -39,18 +36,6 @@ class AudioEngine : JackClient.AudioProcessor {
     private val commandQueue = LockFreeRingBuffer<AudioCommand>(COMMAND_QUEUE_CAPACITY)
     private val droppedCommands = AtomicLong(0)
 
-    // ---- Legacy test effects toggled from the dashboard ---------------------
-    // Kept for backwards compatibility with the existing UI bindings. Toggling
-    // rebuilds the chain off-thread and pushes it through the command queue.
-
-    private val overdrive = GenericOverdrive()
-    private val delay = GenericDelay()
-    private val amp = GenericAmp()
-
-    @Volatile private var overdriveEnabled = false
-    @Volatile private var delayEnabled = false
-    @Volatile private var ampEnabled = false
-
     @Volatile private var inputDeviceId: String? = null
 
     // ---- Metering (audio thread -> control threads) -------------------------
@@ -62,9 +47,6 @@ class AudioEngine : JackClient.AudioProcessor {
 
     private var activeChain: List<DSPModule> = emptyList()
     private var rtPlaybackEnabled = true
-    private var rtTestSignalEnabled = false
-    private var samplePhase = 0.0
-    private val testSignalFrequency = 440.0 // Hz (A4)
 
     // Pre-allocated scratch buffers reused across process() calls.
     private var scratchA = FloatArray(DEFAULT_MAX_BLOCK)
@@ -110,47 +92,9 @@ class AudioEngine : JackClient.AudioProcessor {
         enqueue(AudioCommand.ResetChain)
     }
 
-    // -------------------------------------------------------------------------
-    // Legacy dashboard controls (kept for existing UI bindings)
-    // -------------------------------------------------------------------------
-
-    /** Toggle the generic overdrive test effect. */
-    fun setOverdriveEnabled(enabled: Boolean) {
-        if (enabled && !overdriveEnabled) overdrive.reset()
-        overdriveEnabled = enabled
-        rebuildLegacyChain()
-    }
-
-    /** Toggle the generic delay test effect. */
-    fun setDelayEnabled(enabled: Boolean) {
-        if (enabled && !delayEnabled) delay.reset()
-        delayEnabled = enabled
-        rebuildLegacyChain()
-    }
-
-    /** Toggle the generic amp test effect. */
-    fun setAmpEnabled(enabled: Boolean) {
-        if (enabled && !ampEnabled) amp.reset()
-        ampEnabled = enabled
-        rebuildLegacyChain()
-    }
-
-    private fun rebuildLegacyChain() {
-        val modules = ArrayList<DSPModule>(3)
-        if (overdriveEnabled) modules.add(overdrive)
-        if (ampEnabled) modules.add(amp)
-        if (delayEnabled) modules.add(delay)
-        enqueue(AudioCommand.LoadChain(modules))
-    }
-
     /** Toggle playback on/off. */
     fun setPlaybackEnabled(enabled: Boolean) {
         enqueue(AudioCommand.SetPlayback(enabled))
-    }
-
-    /** Toggle test signal generation. */
-    fun setTestSignalEnabled(enabled: Boolean) {
-        enqueue(AudioCommand.SetTestSignal(enabled))
     }
 
     // -------------------------------------------------------------------------
@@ -245,19 +189,6 @@ class AudioEngine : JackClient.AudioProcessor {
             return
         }
 
-        // Optionally generate a test sine wave into the input buffer.
-        if (rtTestSignalEnabled) {
-            val sampleRate = jackClient.getSampleRate()
-            if (sampleRate > 0) {
-                for (i in 0 until framesToCopy) {
-                    val sample = (kotlin.math.sin(samplePhase * 2.0 * kotlin.math.PI) * 0.3).toFloat()
-                    input.put(i, sample)
-                    samplePhase += testSignalFrequency / sampleRate
-                    if (samplePhase >= 1.0) samplePhase -= 1.0
-                }
-            }
-        }
-
         // Input metering (RMS) computed over the signal actually fed to the chain.
         var inputSumSquares = 0f
         for (i in 0 until framesToCopy) {
@@ -339,7 +270,6 @@ class AudioEngine : JackClient.AudioProcessor {
                 for (module in activeChain) module.reset()
             }
             is AudioCommand.SetPlayback -> rtPlaybackEnabled = command.enabled
-            is AudioCommand.SetTestSignal -> rtTestSignalEnabled = command.enabled
         }
     }
 

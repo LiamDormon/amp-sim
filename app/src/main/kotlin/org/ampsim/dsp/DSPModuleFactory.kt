@@ -31,6 +31,14 @@ object DSPModuleFactory {
         }
 
     /**
+     * Parameter metadata (name, range, default, unit) for [type], or empty if
+     * the type is unknown. Used by the UI to build parameter controls without
+     * duplicating each module's declared ranges.
+     */
+    fun parametersFor(type: String, sampleRate: Int = BaseDSPModule.DEFAULT_SAMPLE_RATE): List<ParameterInfo> =
+        create(type, sampleRate)?.parameters ?: emptyList()
+
+    /**
      * Create a module for [unit], applying its stored parameters. Returns `null`
      * if the unit's type is unknown so callers can skip it safely.
      */

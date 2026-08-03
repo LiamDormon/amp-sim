@@ -107,12 +107,6 @@ template $AppWindow: Adw.ApplicationWindow {
                   }
                 }
             }
-
-            // Test signal toggle button
-            Gtk.ToggleButton test_signal_toggle {
-              hexpand: true;
-              label: _("Debug Tone");
-            }
           }
         };
       };
@@ -141,33 +135,8 @@ template $AppWindow: Adw.ApplicationWindow {
 
             child: Adw.StatusPage {
               title: _("Dashboard");
-              description: _("Dashboard");
+              description: _("Use the Chain Editor to build your signal chain.");
               icon-name: "view-grid-symbolic";
-
-              // Temporary buttons to toggle DSP test effects on/off.
-              child: Gtk.Box {
-                orientation: vertical;
-                spacing: 12;
-                halign: center;
-                valign: center;
-
-                Gtk.Label {
-                  label: _("Test Effects");
-                  styles [ "heading" ]
-                }
-
-                Gtk.ToggleButton overdrive_toggle {
-                  label: _("Overdrive");
-                }
-
-                Gtk.ToggleButton delay_toggle {
-                  label: _("Delay");
-                }
-
-                Gtk.ToggleButton amp_toggle {
-                  label: _("Amp");
-                }
-              };
             };
           }
 
@@ -177,10 +146,10 @@ template $AppWindow: Adw.ApplicationWindow {
             title: _("Chain Editor");
             icon-name: "preferences-system-sharing-symbolic";
 
-            child: Adw.StatusPage {
-              title: _("Chain Editor");
-              description: _("Not Implemented");
-              icon-name: "preferences-system-sharing-symbolic";
+            child: Gtk.Box chain_editor_host {
+              orientation: vertical;
+              vexpand: true;
+              hexpand: true;
             };
           }
 
