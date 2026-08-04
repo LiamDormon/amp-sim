@@ -24,12 +24,14 @@ class SavePresetDialog(
     initialName: String = "",
     initialDescription: String = "",
     initialAuthor: String? = null,
-    private val onSave: (name: String, description: String, author: String?) -> Unit
+    initialTags: List<String> = emptyList(),
+    private val onSave: (name: String, description: String, author: String?, tags: List<String>) -> Unit
 ) : Dialog() {
 
     private val nameRow = EntryRow().apply { title = "Name"; text = initialName }
     private val descriptionRow = EntryRow().apply { title = "Description"; text = initialDescription }
     private val authorRow = EntryRow().apply { title = "Author"; text = initialAuthor ?: "" }
+    private val tagsRow = EntryRow().apply { title = "Tags (comma-separated)"; text = initialTags.joinToString(", ") }
     private val saveButton = Button.withLabel("Save")
 
     init {
@@ -40,6 +42,7 @@ class SavePresetDialog(
         group.add(nameRow)
         group.add(descriptionRow)
         group.add(authorRow)
+        group.add(tagsRow)
 
         val cancelButton = Button.withLabel("Cancel")
         cancelButton.onClicked { close() }
@@ -71,12 +74,16 @@ class SavePresetDialog(
     /** Test hook: triggers the save path without simulating a real GTK click. */
     internal fun triggerSave() {
         if (nameRow.text.isBlank()) return
-        onSave(nameRow.text.trim(), descriptionRow.text.trim(), authorRow.text.trim().ifBlank { null })
+        onSave(nameRow.text.trim(), descriptionRow.text.trim(), authorRow.text.trim().ifBlank { null }, parseTags())
         close()
     }
+
+    private fun parseTags(): List<String> =
+        tagsRow.text.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
     internal fun nameText(): String = nameRow.text
     internal fun descriptionText(): String = descriptionRow.text
     internal fun authorText(): String = authorRow.text
+    internal fun tagsText(): String = tagsRow.text
     internal fun isSaveEnabled(): Boolean = saveButton.sensitive
 }

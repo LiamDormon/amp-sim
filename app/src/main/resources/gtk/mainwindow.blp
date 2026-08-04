@@ -170,18 +170,10 @@ template $AppWindow: Adw.ApplicationWindow {
             title: _("Presets");
             icon-name: "folder-open-symbolic";
 
-            child: Gtk.ScrolledWindow {
-              hexpand: true;
+            child: Gtk.Box presets_host {
+              orientation: vertical;
               vexpand: true;
-
-              child: Gtk.ListBox preset_list {
-                selection-mode: none;
-                margin-top: 12;
-                margin-bottom: 12;
-                margin-start: 12;
-                margin-end: 12;
-                styles [ "boxed-list" ]
-              };
+              hexpand: true;
             };
           }
 

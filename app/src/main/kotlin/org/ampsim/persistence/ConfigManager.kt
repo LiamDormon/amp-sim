@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.ampsim.model.AppConfiguration
 import java.io.File
+import kotlin.time.Clock
 
 class ConfigManager(
     private val configFile: File
@@ -76,6 +77,14 @@ class ConfigManager(
         appScope.launch(configDispatcher) {
             val newConfig = update(_config.value)
             persistConfig(newConfig)
+        }
+    }
+
+    /** Record that [name] was just opened: dedup, move-to-front, cap at [maxRecent]. */
+    fun recordPresetOpened(name: String, maxRecent: Int = 5) {
+        updateConfig { current ->
+            val recents = (listOf(name) + current.presets.recentPresets.filterNot { it == name }).take(maxRecent)
+            current.copy(presets = current.presets.copy(recentPresets = recents, lastOpened = Clock.System.now()))
         }
     }
 

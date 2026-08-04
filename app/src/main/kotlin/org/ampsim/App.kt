@@ -28,7 +28,8 @@ import org.ampsim.persistence.PresetRepository
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.ChainEditorModel
-import org.ampsim.ui.preset.PresetListModel
+import org.ampsim.ui.preset.PresetsView
+import org.ampsim.ui.preset.PresetsViewModel
 import org.ampsim.ui.preset.SavePresetDialog
 import org.gnome.gdk.Display
 import org.gnome.gio.Resource
@@ -65,7 +66,10 @@ class App {
     val chainEditorModel = ChainEditorModel(chainManager)
 
     val presetRepository: PresetRepository = FileSystemPresetRepository(FileSystemPresetRepository.getOrCreatePresetsDir())
-    val presetListModel = PresetListModel(presetRepository)
+    val presetsViewModel = PresetsViewModel(
+        presetRepository,
+        configManager.config.map { it.presets.recentPresets }
+    )
     private val autoSaveRepository: PresetRepository =
         FileSystemPresetRepository(FileSystemPresetRepository.getOrCreateAutoSaveDir())
     val autoSaveService = AutoSaveService(
@@ -117,6 +121,7 @@ class App {
         // ChainEditorModel's own mutators.
         uiCoroutineScope.launch {
             eventBus.presetLoaded().collect { event ->
+                configManager.recordPresetOpened(event.preset.metadata.name)
                 GLib.idleAdd(0) {
                     audioEngine.crossfadeToChain(event.preset.chain)
                     chainEditorModel.notifyExternalChange()
@@ -167,9 +172,10 @@ class App {
         val dialog = SavePresetDialog(
             initialName = current?.metadata?.name ?: "",
             initialDescription = current?.metadata?.description ?: "",
-            initialAuthor = current?.metadata?.author
-        ) { name, description, author ->
-            val preset = Preset.create(name, description, chainManager.chain.value.effectUnits, author)
+            initialAuthor = current?.metadata?.author,
+            initialTags = current?.metadata?.tags ?: emptyList()
+        ) { name, description, author, tags ->
+            val preset = Preset.create(name, description, chainManager.chain.value.effectUnits, author, tags)
             uiCoroutineScope.launch {
                 val result = presetRepository.save(preset)
                 GLib.idleAdd(0) {
@@ -186,20 +192,70 @@ class App {
         dialog.present(window)
     }
 
-    /** Bind the Presets tab's list to [presetListModel], loading the clicked preset through [chainManager]. */
-    fun bindPresetList(window: AppWindow) = window.bindPresetList(presetListModel.presets, uiCoroutineScope) { name ->
-        uiCoroutineScope.launch {
-            val preset = presetRepository.load(name)
-            GLib.idleAdd(0) {
-                if (preset != null) {
-                    chainManager.loadPreset(preset)
-                } else {
-                    eventBus.publish(UIEvent.ErrorOccurred("Preset '$name' could not be loaded.", "PresetListModel"))
+    /** Bind the Presets tab's search/filter/context-menu view, loading the clicked preset through [chainManager]. */
+    fun bindPresetsView(window: AppWindow) = window.bindPresetsView(
+        PresetsView(
+            model = presetsViewModel,
+            scope = uiCoroutineScope,
+            onLoadRequested = { name ->
+                uiCoroutineScope.launch {
+                    val preset = presetRepository.load(name)
+                    GLib.idleAdd(0) {
+                        if (preset != null) {
+                            chainManager.loadPreset(preset)
+                        } else {
+                            eventBus.publish(UIEvent.ErrorOccurred("Preset '$name' could not be loaded.", "PresetsView"))
+                        }
+                        false
+                    }
                 }
-                false
+            },
+            onRenameRequested = { oldName, newName ->
+                uiCoroutineScope.launch {
+                    val result = presetRepository.rename(oldName, newName)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Rename failed: ${e.message}", "PresetsView"))
+                        }
+                        false
+                    }
+                }
+            },
+            onDuplicateRequested = { sourceName, newName ->
+                uiCoroutineScope.launch {
+                    val result = presetRepository.duplicate(sourceName, newName)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Duplicate failed: ${e.message}", "PresetsView"))
+                        }
+                        false
+                    }
+                }
+            },
+            onExportRequested = { name, destination ->
+                uiCoroutineScope.launch {
+                    val result = presetRepository.export(name, destination)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Export failed: ${e.message}", "PresetsView"))
+                        }
+                        false
+                    }
+                }
+            },
+            onDeleteRequested = { name ->
+                uiCoroutineScope.launch {
+                    val result = presetRepository.delete(name)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Delete failed: ${e.message}", "PresetsView"))
+                        }
+                        false
+                    }
+                }
             }
-        }
-    }
+        )
+    )
 
     fun destroy() {
         audioEngine.stop()
@@ -227,12 +283,22 @@ fun main(args: Array<String>) {
         appInstance.start()
 
         // The default GdkDisplay only exists once GTK has connected on activation,
-        // so the stylesheet is loaded here rather than before app.run().
-        val cssProvider = CssProvider()
-        cssProvider.loadFromResource("/org/ampsim/css/chain-editor.css")
+        // so the stylesheets are loaded here rather than before app.run(). Each
+        // CssProvider.loadFromResource call replaces that provider's own content
+        // (it doesn't append), so each stylesheet needs its own provider instance.
+        val chainEditorCssProvider = CssProvider()
+        chainEditorCssProvider.loadFromResource("/org/ampsim/css/chain-editor.css")
         Gtk.styleContextAddProviderForDisplay(
             Display.getDefault(),
-            cssProvider,
+            chainEditorCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        val presetsCssProvider = CssProvider()
+        presetsCssProvider.loadFromResource("/org/ampsim/css/presets.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            presetsCssProvider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
@@ -242,7 +308,7 @@ fun main(args: Array<String>) {
         appInstance.bindAudioInputSelector(mainWindow)
         appInstance.bindChainEditor(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
-        appInstance.bindPresetList(mainWindow)
+        appInstance.bindPresetsView(mainWindow)
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {

@@ -131,4 +131,114 @@ class FileSystemPresetRepositoryTest {
             assertEquals("Contended", loaded.metadata.name)
         }
     }
+
+    @Test
+    fun rescanPopulatesTagsOnTheSummary() = runBlocking {
+        repository.save(Preset.create(name = "Tagged", tags = listOf("metal", "high-gain")))
+        waitFor("preset to appear in list") { repository.presets.value.any { it.name == "Tagged" } }
+
+        assertEquals(listOf("metal", "high-gain"), repository.presets.value.first { it.name == "Tagged" }.tags)
+    }
+
+    @Test
+    fun renameMovesThePresetUnderTheNewNameAndRemovesTheOldFile() = runBlocking {
+        repository.save(Preset.create(name = "Old Name", description = "desc"))
+        waitFor("preset to appear in list") { repository.presets.value.any { it.name == "Old Name" } }
+
+        val result = repository.rename("Old Name", "New Name")
+        assertTrue(result.isSuccess)
+
+        assertNull(repository.load("Old Name"))
+        val renamed = repository.load("New Name")
+        assertTrue(renamed != null)
+        assertEquals("New Name", renamed.metadata.name)
+        assertEquals("desc", renamed.metadata.description)
+    }
+
+    @Test
+    fun renameFailsWhenNewNameIsBlank() = runBlocking {
+        repository.save(Preset.create(name = "Source"))
+        val result = repository.rename("Source", "   ")
+        assertTrue(result.isFailure)
+        assertTrue(repository.exists("Source"))
+    }
+
+    @Test
+    fun renameFailsWhenOldNameDoesNotExist() = runBlocking {
+        val result = repository.rename("Nonexistent", "New Name")
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun renameFailsWhenAnotherPresetAlreadyHasTheNewName() = runBlocking {
+        repository.save(Preset.create(name = "First"))
+        repository.save(Preset.create(name = "Second"))
+        waitFor("both presets to appear in list") { repository.presets.value.size == 2 }
+
+        val result = repository.rename("First", "Second")
+        assertTrue(result.isFailure)
+        assertTrue(repository.exists("First"))
+    }
+
+    @Test
+    fun renameToTheSameNameIsANoOp() = runBlocking {
+        repository.save(Preset.create(name = "Same"))
+        val result = repository.rename("Same", "Same")
+        assertTrue(result.isSuccess)
+        assertTrue(repository.exists("Same"))
+    }
+
+    @Test
+    fun duplicateCreatesASecondPresetLeavingTheSourceUntouched() = runBlocking {
+        repository.save(Preset.create(name = "Original", description = "desc"))
+        waitFor("preset to appear in list") { repository.presets.value.any { it.name == "Original" } }
+
+        val result = repository.duplicate("Original", "Original copy")
+        assertTrue(result.isSuccess)
+
+        assertTrue(repository.exists("Original"))
+        val copy = repository.load("Original copy")
+        assertTrue(copy != null)
+        assertEquals("desc", copy.metadata.description)
+    }
+
+    @Test
+    fun duplicateFailsWhenTheTargetNameAlreadyExists() = runBlocking {
+        repository.save(Preset.create(name = "Original"))
+        repository.save(Preset.create(name = "Taken"))
+        waitFor("both presets to appear in list") { repository.presets.value.size == 2 }
+
+        val result = repository.duplicate("Original", "Taken")
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun duplicatedPresetGetsAFreshCreatedTimestamp() = runBlocking {
+        repository.save(Preset.create(name = "Original"))
+        val original = repository.load("Original")!!
+
+        repository.duplicate("Original", "Copy")
+        val copy = repository.load("Copy")!!
+
+        assertTrue(copy.metadata.created >= original.metadata.created)
+    }
+
+    @Test
+    fun exportCopiesThePresetFileToTheChosenDestination(@TempDir destinationDir: File) = runBlocking {
+        repository.save(Preset.create(name = "Exportable", description = "desc"))
+        val destination = File(destinationDir, "exported.json")
+
+        val result = repository.export("Exportable", destination)
+        assertTrue(result.isSuccess)
+        assertTrue(destination.exists())
+        assertTrue(destination.readText().contains("Exportable"))
+    }
+
+    @Test
+    fun exportFailsWhenThePresetDoesNotExist(@TempDir destinationDir: File) = runBlocking {
+        val destination = File(destinationDir, "exported.json")
+        val result = repository.export("Nonexistent", destination)
+        assertTrue(result.isFailure)
+        assertTrue(!destination.exists())
+    }
 }

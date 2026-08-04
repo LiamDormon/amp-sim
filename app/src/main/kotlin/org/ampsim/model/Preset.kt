@@ -14,12 +14,14 @@ data class Preset(
             name: String,
             description: String = "",
             effectUnits: List<EffectUnit> = emptyList(),
-            author: String? = null
+            author: String? = null,
+            tags: List<String> = emptyList()
         ) = Preset(
             metadata = PresetMetadata(
                 name = name,
                 description = description,
-                author = author
+                author = author,
+                tags = tags
             ),
             chain = Chain(effectUnits)
         )

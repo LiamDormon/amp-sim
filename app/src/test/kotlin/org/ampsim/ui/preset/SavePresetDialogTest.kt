@@ -22,7 +22,7 @@ class SavePresetDialogTest {
             initialName = "Heavy Metal Lead",
             initialDescription = "High-gain",
             initialAuthor = "Liam"
-        ) { _, _, _ -> }
+        ) { _, _, _, _ -> }
 
         assertEquals("Heavy Metal Lead", dialog.nameText())
         assertEquals("High-gain", dialog.descriptionText())
@@ -31,8 +31,18 @@ class SavePresetDialogTest {
     }
 
     @Test
+    fun prefillsTagsFromConstructorArgument() {
+        val dialog = SavePresetDialog(
+            initialName = "Preset",
+            initialTags = listOf("metal", "high-gain")
+        ) { _, _, _, _ -> }
+
+        assertEquals("metal, high-gain", dialog.tagsText())
+    }
+
+    @Test
     fun saveDisabledWhenNameBlank() {
-        val dialog = SavePresetDialog { _, _, _ -> }
+        val dialog = SavePresetDialog { _, _, _, _ -> }
 
         assertFalse(dialog.isSaveEnabled())
     }
@@ -47,7 +57,7 @@ class SavePresetDialogTest {
             initialName = "  My Preset  ",
             initialDescription = "  desc  ",
             initialAuthor = "  Liam  "
-        ) { name, description, author ->
+        ) { name, description, author, _ ->
             savedName = name
             savedDescription = description
             savedAuthor = author
@@ -63,7 +73,7 @@ class SavePresetDialogTest {
     @Test
     fun triggerSaveWithBlankAuthorPassesNull() {
         var savedAuthor: String? = "not-null-sentinel"
-        val dialog = SavePresetDialog(initialName = "Preset", initialAuthor = null) { _, _, author ->
+        val dialog = SavePresetDialog(initialName = "Preset", initialAuthor = null) { _, _, author, _ ->
             savedAuthor = author
         }
 
@@ -73,9 +83,33 @@ class SavePresetDialogTest {
     }
 
     @Test
+    fun triggerSaveWithBlankTagsFieldPassesAnEmptyList() {
+        var savedTags: List<String>? = listOf("sentinel")
+        val dialog = SavePresetDialog(initialName = "Preset", initialTags = emptyList()) { _, _, _, tags ->
+            savedTags = tags
+        }
+
+        dialog.triggerSave()
+
+        assertEquals(emptyList(), savedTags)
+    }
+
+    @Test
+    fun triggerSaveWithMessyTagsInputTrimsAndDeduplicates() {
+        var savedTags: List<String>? = null
+        val dialog = SavePresetDialog(initialName = "Preset", initialTags = listOf(" metal ", "metal", "", "high-gain")) { _, _, _, tags ->
+            savedTags = tags
+        }
+
+        dialog.triggerSave()
+
+        assertEquals(listOf("metal", "high-gain"), savedTags)
+    }
+
+    @Test
     fun blankNamePreventsSaveEvenIfTriggeredDirectly() {
         var called = false
-        val dialog = SavePresetDialog { _, _, _ -> called = true }
+        val dialog = SavePresetDialog { _, _, _, _ -> called = true }
 
         dialog.triggerSave()
 

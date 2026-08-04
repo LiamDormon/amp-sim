@@ -28,6 +28,18 @@ class PresetTest {
     }
 
     @Test
+    fun testCompanionCreateDefaultsTagsToEmptyList() {
+        val preset = Preset.create(name = "No Tags")
+        assertEquals(emptyList(), preset.metadata.tags)
+    }
+
+    @Test
+    fun testCompanionCreateStoresProvidedTags() {
+        val preset = Preset.create(name = "Tagged", tags = listOf("metal", "high-gain"))
+        assertEquals(listOf("metal", "high-gain"), preset.metadata.tags)
+    }
+
+    @Test
     fun testWithUpdatedChain() {
         val effectUnit1 = EffectUnit(id = "1", type = "amp", model = "Plexi")
         val preset = Preset.create(

@@ -14,6 +14,7 @@ import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import kotlin.time.Clock
 
 /**
  * File-backed [PresetRepository]. Each preset is stored as its own JSON file
@@ -100,6 +101,33 @@ class FileSystemPresetRepository(
         rescan()
     }
 
+    override suspend fun rename(oldName: String, newName: String): Result<Unit> {
+        if (newName.isBlank()) return Result.failure(IllegalArgumentException("newName must not be blank"))
+        if (newName == oldName) return Result.success(Unit)
+        if (exists(newName)) return Result.failure(IllegalStateException("A preset named '$newName' already exists"))
+        val preset = load(oldName) ?: return Result.failure(IllegalStateException("Preset '$oldName' does not exist"))
+        val saveResult = save(preset.copy(metadata = preset.metadata.copy(name = newName, modified = Clock.System.now())))
+        if (saveResult.isFailure) return saveResult
+        return delete(oldName)
+    }
+
+    override suspend fun duplicate(sourceName: String, newName: String): Result<Unit> {
+        if (newName.isBlank()) return Result.failure(IllegalArgumentException("newName must not be blank"))
+        if (exists(newName)) return Result.failure(IllegalStateException("A preset named '$newName' already exists"))
+        val source = load(sourceName) ?: return Result.failure(IllegalStateException("Preset '$sourceName' does not exist"))
+        val now = Clock.System.now()
+        return save(source.copy(metadata = source.metadata.copy(name = newName, created = now, modified = now)))
+    }
+
+    override suspend fun export(name: String, destination: File): Result<Unit> = withContext(ioDispatcher) {
+        val source = fileFor(name)
+        if (!source.exists()) return@withContext Result.failure(IllegalStateException("Preset '$name' does not exist"))
+        runCatching {
+            Files.copy(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            Unit
+        }.onFailure { e -> System.err.println("Failed to export preset '$name': ${e.message}") }
+    }
+
     /** Stop the repository's background scope. Call once on shutdown. */
     fun cancel() = repoScope.cancel()
 
@@ -111,7 +139,7 @@ class FileSystemPresetRepository(
             runCatching { json.decodeFromString(Preset.serializer(), f.readText()) }
                 .getOrNull()
                 ?.takeIf { isValid(it) }
-                ?.let { PresetSummary(it.metadata.name, it.metadata.description, it.metadata.author, it.metadata.modified) }
+                ?.let { PresetSummary(it.metadata.name, it.metadata.description, it.metadata.author, it.metadata.modified, it.metadata.tags) }
         }.sortedByDescending { it.modified }
     }
 

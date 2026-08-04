@@ -1,0 +1,31 @@
+/* Presets tab — search/tag-filter/context-menu styling.
+ *
+ * Tag chips use libadwaita's standard named accent colors (@accent_bg_color /
+ * @accent_fg_color) rather than the Chain Editor's custom amber palette, so
+ * they follow the user's system/Adwaita accent color choice instead of a
+ * fixed color.
+ */
+
+.presets-tag-filter {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.preset-tag-pill {
+  border-radius: 999px;
+  padding: 0.25em 0.75em;
+  font-size: 0.85em;
+}
+
+.preset-tag-pill:checked {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+
+.presets-context-menu {
+  padding: 0.25em;
+}
+
+.presets-context-menu-popover {
+  padding: 0;
+}

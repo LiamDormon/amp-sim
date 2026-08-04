@@ -175,21 +175,10 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         <property name="title" translatable="yes">Presets</property>
                         <property name="icon-name">folder-open-symbolic</property>
                         <property name="child">
-                          <object class="GtkScrolledWindow">
-                            <property name="hexpand">true</property>
+                          <object class="GtkBox" id="presets_host">
+                            <property name="orientation">1</property>
                             <property name="vexpand">true</property>
-                            <property name="child">
-                              <object class="GtkListBox" id="preset_list">
-                                <property name="selection-mode">0</property>
-                                <property name="margin-top">12</property>
-                                <property name="margin-bottom">12</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
-                                <style>
-                                  <class name="boxed-list"/>
-                                </style>
-                              </object>
-                            </property>
+                            <property name="hexpand">true</property>
                           </object>
                         </property>
                       </object>

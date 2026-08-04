@@ -153,4 +153,74 @@ class ConfigManagerTest {
         assertEquals(expectedPresets, persisted.presets.recentPresets.toSet())
         assertEquals(persisted, manager.config.value)
     }
+
+    @Test
+    fun recordPresetOpenedAddsANameToTheFrontOfRecentPresets() = runBlocking {
+        manager = ConfigManager(configFile)
+        waitFor("initial config to be written") { configFile.exists() && configFile.length() > 0 }
+
+        manager.recordPresetOpened("Preset A")
+
+        waitFor("recent presets to be updated") {
+            manager.config.value.presets.recentPresets == listOf("Preset A")
+        }
+    }
+
+    @Test
+    fun recordPresetOpenedMovesAnAlreadyPresentNameToTheFront() = runBlocking {
+        manager = ConfigManager(configFile)
+        waitFor("initial config to be written") { configFile.exists() && configFile.length() > 0 }
+
+        manager.recordPresetOpened("Preset A")
+        waitFor("first record to apply") { manager.config.value.presets.recentPresets == listOf("Preset A") }
+        manager.recordPresetOpened("Preset B")
+        waitFor("second record to apply") { manager.config.value.presets.recentPresets == listOf("Preset B", "Preset A") }
+
+        manager.recordPresetOpened("Preset A")
+
+        waitFor("Preset A to move back to the front") {
+            manager.config.value.presets.recentPresets == listOf("Preset A", "Preset B")
+        }
+    }
+
+    @Test
+    fun recordPresetOpenedDeduplicatesRepeatedOpens() = runBlocking {
+        manager = ConfigManager(configFile)
+        waitFor("initial config to be written") { configFile.exists() && configFile.length() > 0 }
+
+        manager.recordPresetOpened("Preset A")
+        manager.recordPresetOpened("Preset A")
+        manager.recordPresetOpened("Preset A")
+
+        waitFor("only one entry for the repeated preset") {
+            manager.config.value.presets.recentPresets == listOf("Preset A")
+        }
+    }
+
+    @Test
+    fun recordPresetOpenedCapsRecentPresetsAtTheConfiguredMaximum() = runBlocking {
+        manager = ConfigManager(configFile)
+        waitFor("initial config to be written") { configFile.exists() && configFile.length() > 0 }
+
+        for (i in 1..7) {
+            manager.recordPresetOpened("Preset $i", maxRecent = 5)
+        }
+
+        waitFor("recent presets to be capped at 5") {
+            manager.config.value.presets.recentPresets.size == 5
+        }
+        assertEquals(listOf("Preset 7", "Preset 6", "Preset 5", "Preset 4", "Preset 3"), manager.config.value.presets.recentPresets)
+    }
+
+    @Test
+    fun recordPresetOpenedUpdatesLastOpened() = runBlocking {
+        manager = ConfigManager(configFile)
+        waitFor("initial config to be written") { configFile.exists() && configFile.length() > 0 }
+
+        assertTrue(manager.config.value.presets.lastOpened == null)
+
+        manager.recordPresetOpened("Preset A")
+
+        waitFor("lastOpened to be set") { manager.config.value.presets.lastOpened != null }
+    }
 }
