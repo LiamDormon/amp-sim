@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import org.gnome.adw.Application
 import org.gnome.gio.ApplicationFlags
@@ -14,12 +16,20 @@ import org.ampsim.events.EventBusImpl
 import org.ampsim.events.UIEvent
 import org.ampsim.events.chainModified
 import org.ampsim.events.parameterChanged
+import org.ampsim.events.presetLoaded
+import org.ampsim.events.presetSaved
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import org.ampsim.model.Preset
+import org.ampsim.persistence.AutoSaveService
 import org.ampsim.persistence.ConfigManager
+import org.ampsim.persistence.FileSystemPresetRepository
+import org.ampsim.persistence.PresetRepository
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.ChainEditorModel
+import org.ampsim.ui.preset.PresetListModel
+import org.ampsim.ui.preset.SavePresetDialog
 import org.gnome.gdk.Display
 import org.gnome.gio.Resource
 import org.gnome.glib.GLib
@@ -27,6 +37,7 @@ import org.gnome.gtk.CssProvider
 import org.gnome.gtk.Gtk
 import org.javagi.gtk.types.TemplateTypes
 import java.nio.file.Paths
+import kotlin.time.Duration.Companion.seconds
 
 /** Placeholder chain shown in the Chain Editor until presets/library loading exists. */
 private fun placeholderChain(): Chain = Chain(
@@ -52,6 +63,16 @@ class App {
     val eventBus = EventBusImpl()
     val chainManager = ChainManager(eventBus, placeholderChain())
     val chainEditorModel = ChainEditorModel(chainManager)
+
+    val presetRepository: PresetRepository = FileSystemPresetRepository(FileSystemPresetRepository.getOrCreatePresetsDir())
+    val presetListModel = PresetListModel(presetRepository)
+    private val autoSaveRepository: PresetRepository =
+        FileSystemPresetRepository(FileSystemPresetRepository.getOrCreateAutoSaveDir())
+    val autoSaveService = AutoSaveService(
+        chainManager,
+        autoSaveRepository,
+        interval = configManager.config.value.advanced.autoSaveIntervalSeconds.seconds
+    )
 
     val uiCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -87,10 +108,27 @@ class App {
                 }
             }
         }
+
+        // A preset load cross-fades rather than hard-swapping (see
+        // AudioEngine.crossfadeToChain), so it's routed separately from the
+        // chainModified() collector above rather than also publishing
+        // ChainModified — see ChainManager.loadPreset. The Chain Editor canvas
+        // wouldn't otherwise notice this change since it bypasses
+        // ChainEditorModel's own mutators.
+        uiCoroutineScope.launch {
+            eventBus.presetLoaded().collect { event ->
+                GLib.idleAdd(0) {
+                    audioEngine.crossfadeToChain(event.preset.chain)
+                    chainEditorModel.notifyExternalChange()
+                    false
+                }
+            }
+        }
     }
 
     fun start() {
         audioEngine.start()
+        autoSaveService.start()
     }
 
     fun getAudioStatus() = audioEngine.getStatus()
@@ -123,9 +161,52 @@ class App {
 
     fun setAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
 
+    /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
+    fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving {
+        val current = chainManager.activePreset.value
+        val dialog = SavePresetDialog(
+            initialName = current?.metadata?.name ?: "",
+            initialDescription = current?.metadata?.description ?: "",
+            initialAuthor = current?.metadata?.author
+        ) { name, description, author ->
+            val preset = Preset.create(name, description, chainManager.chain.value.effectUnits, author)
+            uiCoroutineScope.launch {
+                val result = presetRepository.save(preset)
+                GLib.idleAdd(0) {
+                    result.onSuccess {
+                        chainManager.markSaved(preset)
+                        eventBus.publish(UIEvent.PresetSaved(preset))
+                    }.onFailure { e ->
+                        eventBus.publish(UIEvent.ErrorOccurred("Failed to save preset: ${e.message}", "SavePresetDialog"))
+                    }
+                    false
+                }
+            }
+        }
+        dialog.present(window)
+    }
+
+    /** Bind the Presets tab's list to [presetListModel], loading the clicked preset through [chainManager]. */
+    fun bindPresetList(window: AppWindow) = window.bindPresetList(presetListModel.presets, uiCoroutineScope) { name ->
+        uiCoroutineScope.launch {
+            val preset = presetRepository.load(name)
+            GLib.idleAdd(0) {
+                if (preset != null) {
+                    chainManager.loadPreset(preset)
+                } else {
+                    eventBus.publish(UIEvent.ErrorOccurred("Preset '$name' could not be loaded.", "PresetListModel"))
+                }
+                false
+            }
+        }
+    }
+
     fun destroy() {
         audioEngine.stop()
+        autoSaveService.stop()
         configManager.cancel()
+        (presetRepository as? FileSystemPresetRepository)?.cancel()
+        (autoSaveRepository as? FileSystemPresetRepository)?.cancel()
         uiCoroutineScope.cancel()
         eventBus.close()
     }
@@ -160,6 +241,8 @@ fun main(args: Array<String>) {
         appInstance.bindAudioControls(mainWindow)
         appInstance.bindAudioInputSelector(mainWindow)
         appInstance.bindChainEditor(mainWindow)
+        appInstance.bindPresetSaving(mainWindow)
+        appInstance.bindPresetList(mainWindow)
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {
@@ -174,6 +257,21 @@ fun main(args: Array<String>) {
                     mainWindow.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
                     mainWindow.setInputDeviceSelection(config.audio.inputDeviceId)
                     appInstance.setAudioInputDevice(config.audio.inputDeviceId)
+                    false
+                }
+            }
+        }
+
+        // Keep the header bar's preset-name display in sync with whichever
+        // named preset is currently active, whether it just loaded or was
+        // just saved.
+        appInstance.uiCoroutineScope.launch {
+            merge(
+                appInstance.eventBus.presetLoaded().map { it.preset.metadata.name },
+                appInstance.eventBus.presetSaved().map { it.preset.metadata.name }
+            ).collect { name ->
+                GLib.idleAdd(0) {
+                    mainWindow.setPresetName(name)
                     false
                 }
             }

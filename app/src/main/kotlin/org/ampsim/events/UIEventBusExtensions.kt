@@ -12,6 +12,9 @@ fun UIEventBus.chainModified(): Flow<UIEvent.ChainModified> = eventsOfType()
 /** Only [UIEvent.PresetLoaded] events. */
 fun UIEventBus.presetLoaded(): Flow<UIEvent.PresetLoaded> = eventsOfType()
 
+/** Only [UIEvent.PresetSaved] events. */
+fun UIEventBus.presetSaved(): Flow<UIEvent.PresetSaved> = eventsOfType()
+
 /** Only [UIEvent.ParameterChanged] events. */
 fun UIEventBus.parameterChanged(): Flow<UIEvent.ParameterChanged> = eventsOfType()
 

@@ -23,6 +23,16 @@ class ChainManager(
     private val _chain = MutableStateFlow(initialChain)
     val chain: StateFlow<Chain> = _chain.asStateFlow()
 
+    /**
+     * The [Preset] the current [chain] was loaded from (via [loadPreset]) or
+     * last saved as (via [markSaved]), or `null` if the chain has since
+     * diverged from any known preset via a structural edit or parameter
+     * tweak. Used to display the active preset name and to pre-fill a save
+     * dialog.
+     */
+    private val _activePreset = MutableStateFlow<Preset?>(null)
+    val activePreset: StateFlow<Preset?> = _activePreset.asStateFlow()
+
     /** Insert [unit] at [index] (default: append). Publishes [UIEvent.ErrorOccurred] instead of throwing on an invalid index. */
     fun addUnit(unit: EffectUnit, index: Int = _chain.value.effectUnits.size) {
         val updated = runCatching { _chain.value.addUnit(unit, index) }
@@ -31,6 +41,7 @@ class ChainManager(
                 return
             }
         _chain.value = updated
+        _activePreset.value = null
         eventBus.publish(UIEvent.UnitAdded(unit, index))
         eventBus.publish(UIEvent.ChainModified(updated))
     }
@@ -38,12 +49,14 @@ class ChainManager(
     /** Replace the entire chain (e.g. loading a bare chain rather than a full [Preset]). */
     fun setChain(newChain: Chain) {
         _chain.value = newChain
+        _activePreset.value = null
         eventBus.publish(UIEvent.ChainModified(newChain))
     }
 
     fun removeUnit(unitId: String) {
         val updated = _chain.value.removeUnit(unitId)
         _chain.value = updated
+        _activePreset.value = null
         eventBus.publish(UIEvent.UnitRemoved(unitId))
         eventBus.publish(UIEvent.ChainModified(updated))
     }
@@ -51,12 +64,14 @@ class ChainManager(
     fun moveUnit(fromIndex: Int, toIndex: Int) {
         val updated = _chain.value.moveUnit(fromIndex, toIndex)
         _chain.value = updated
+        _activePreset.value = null
         eventBus.publish(UIEvent.ChainModified(updated))
     }
 
     fun setUnitEnabled(unitId: String, enabled: Boolean) {
         val updated = _chain.value.updateUnit(unitId) { copy(enabled = enabled) }
         _chain.value = updated
+        _activePreset.value = null
         eventBus.publish(UIEvent.ChainModified(updated))
     }
 
@@ -66,13 +81,32 @@ class ChainManager(
     fun setUnitParameter(unitId: String, name: String, value: Float) {
         val updated = _chain.value.updateUnit(unitId) { setParameter(name, value) }
         _chain.value = updated
+        _activePreset.value = null
         eventBus.publish(UIEvent.ParameterChanged(unitId, name, value))
     }
 
+    /**
+     * Load [preset] as the active chain. Publishes only [UIEvent.PresetLoaded]
+     * (not [UIEvent.ChainModified]) — subscribers that need to react to a
+     * preset load specifically (e.g. the audio engine's crossfade, or the
+     * Chain Editor canvas) listen for [UIEvent.PresetLoaded] instead, so an
+     * ordinary structural-edit subscriber doesn't also fire an instant hard
+     * swap in parallel with a preset-load crossfade.
+     */
     fun loadPreset(preset: Preset) {
         _chain.value = preset.chain
+        _activePreset.value = preset
         eventBus.publish(UIEvent.PresetLoaded(preset))
-        eventBus.publish(UIEvent.ChainModified(preset.chain))
+    }
+
+    /**
+     * Record that [preset] now reflects what's on disk, without touching the
+     * live [chain] or publishing [UIEvent.PresetLoaded] — the chain itself
+     * didn't change, only its saved representation, so nothing downstream
+     * (audio engine, Chain Editor canvas) needs to react.
+     */
+    fun markSaved(preset: Preset) {
+        _activePreset.value = preset
     }
 
     companion object {

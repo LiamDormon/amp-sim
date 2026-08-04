@@ -112,6 +112,13 @@ class ChainEditorModel(private val chainManager: ChainManager) {
         _selectedUnitId.value = unitId
     }
 
+    /**
+     * Re-render from an external mutation this model didn't itself trigger —
+     * e.g. a preset load driven directly through [ChainManager.loadPreset]
+     * rather than through one of this model's own methods.
+     */
+    fun notifyExternalChange() = notifyListeners()
+
     private fun notifyListeners() {
         val current = chain.value
         listeners.forEach { it(current) }

@@ -18,6 +18,9 @@ sealed class UIEvent {
     /** [preset] was loaded and is now (or is about to become) the active chain. */
     data class PresetLoaded(val preset: Preset) : UIEvent()
 
+    /** [preset] was successfully written to disk (via an explicit save, not auto-save). */
+    data class PresetSaved(val preset: Preset) : UIEvent()
+
     /** A single parameter of the unit identified by [unitId] was set to [value]. */
     data class ParameterChanged(val unitId: String, val parameterName: String, val value: Float) : UIEvent()
 

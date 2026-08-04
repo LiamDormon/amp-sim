@@ -32,4 +32,14 @@ sealed interface AudioCommand {
 
     /** Enable or disable audio output (metering keeps running when disabled). */
     data class SetPlayback(val enabled: Boolean) : AudioCommand
+
+    /**
+     * Cross-fade from the currently active chain to [modules] over [fadeFrames]
+     * samples. Both chains run in parallel on the audio thread for the fade
+     * duration; [modules] becomes canonical (so later commands like
+     * [SetParameter]/[ResetChain] target the new chain), while the outgoing
+     * chain is retained separately purely to finish decaying its output (e.g.
+     * a delay tail) before being dropped.
+     */
+    data class CrossfadeToChain(val modules: List<DSPModule>, val fadeFrames: Int) : AudioCommand
 }

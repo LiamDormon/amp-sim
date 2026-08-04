@@ -119,7 +119,18 @@ template $AppWindow: Adw.ApplicationWindow {
 
       child: Adw.ToolbarView {
         [top]
-        Adw.HeaderBar {}
+        Adw.HeaderBar {
+          [title]
+          Adw.WindowTitle preset_title {
+            title: _("Untitled");
+          }
+
+          [end]
+          Gtk.Button save_preset_button {
+            icon-name: "document-save-symbolic";
+            tooltip-text: _("Save Preset");
+          }
+        }
 
         // The ViewStack lives here; the sidebar drives which page is visible.
         content: Adw.ViewStack content_stack {
@@ -159,10 +170,18 @@ template $AppWindow: Adw.ApplicationWindow {
             title: _("Presets");
             icon-name: "folder-open-symbolic";
 
-            child: Adw.StatusPage {
-              title: _("Presets");
-              description: _("No presets found.");
-              icon-name: "folder-open-symbolic";
+            child: Gtk.ScrolledWindow {
+              hexpand: true;
+              vexpand: true;
+
+              child: Gtk.ListBox preset_list {
+                selection-mode: none;
+                margin-top: 12;
+                margin-bottom: 12;
+                margin-start: 12;
+                margin-end: 12;
+                styles [ "boxed-list" ]
+              };
             };
           }
 

@@ -99,6 +99,29 @@ class JackClient(private val clientName: String = "AmpSim") {
         emptyList()
     }
 
+    /**
+     * Physical capture ports (actual hardware mic/line-in jacks), as opposed
+     * to virtual ports that also carry the [JackPortFlags.JackPortIsOutput]
+     * flag returned by [availableInputSources] — most notably PipeWire
+     * "Monitor of ..." ports, which loop back whatever is currently playing
+     * through the speakers rather than a real input. Auto-connecting to one
+     * of those by default would route this app's own output back into its
+     * own input, creating a genuine feedback loop through the DSP chain.
+     */
+    private fun physicalCapturePorts(): List<String> = try {
+        val currentClient = client ?: return emptyList()
+        Jack.getInstance()
+            .getPorts(
+                currentClient,
+                null,
+                JackPortType.AUDIO,
+                EnumSet.of(JackPortFlags.JackPortIsOutput, JackPortFlags.JackPortIsPhysical)
+            )
+            .toList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
     fun routeAudio(inputSourcePort: String? = null) {
         client ?: return
         val jack = Jack.getInstance()
@@ -112,8 +135,14 @@ class JackClient(private val clientName: String = "AmpSim") {
         }
 
         val inputSources = availableInputSources()
+        // Prefer a real hardware capture device by default so a virtual
+        // monitor/loopback port never gets auto-selected (see
+        // physicalCapturePorts); an explicit user choice is still honored
+        // even if it happens to be a monitor port.
+        val physicalSources = physicalCapturePorts()
         val selectedSource = when {
             inputSourcePort != null && inputSources.contains(inputSourcePort) -> inputSourcePort
+            physicalSources.isNotEmpty() -> physicalSources.first()
             inputSources.isNotEmpty() -> inputSources.first()
             else -> null
         }

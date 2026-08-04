@@ -1,16 +1,25 @@
 package org.ampsim.ui
 
 import java.lang.foreign.MemorySegment
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import org.gnome.adw.ActionRow
 import org.gnome.adw.ApplicationWindow
 import org.gnome.adw.ViewSwitcherSidebar
+import org.gnome.adw.WindowTitle
+import org.gnome.glib.GLib
 import org.gnome.gtk.Box
+import org.gnome.gtk.Button
 import org.gnome.gtk.DropDown
+import org.gnome.gtk.ListBox
 import org.gnome.gtk.ToggleButton
 import org.gnome.gtk.ProgressBar
 import org.gnome.gtk.StringList
 import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
+import org.ampsim.persistence.PresetSummary
 import org.ampsim.ui.chain.ChainEditor
 
 @GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
@@ -38,6 +47,18 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "chain_editor_host")
     @JvmField
     var chainEditorHost: Box? = null
+
+    @GtkChild(name = "preset_title")
+    @JvmField
+    var presetTitle: WindowTitle? = null
+
+    @GtkChild(name = "save_preset_button")
+    @JvmField
+    var savePresetButton: Button? = null
+
+    @GtkChild(name = "preset_list")
+    @JvmField
+    var presetList: ListBox? = null
 
     private var inputDeviceSelectionGuard = false
     private var inputDeviceIds: List<String> = emptyList()
@@ -124,6 +145,59 @@ class AppWindow : ApplicationWindow {
         val clipped = volume.coerceIn(0f, 1f).toDouble()
         volumeLevel?.apply {
             fraction = clipped
+        }
+    }
+
+    /** Update the header bar's preset-name display. `null` shows "Untitled". */
+    fun setPresetName(name: String?) {
+        presetTitle?.title = name ?: "Untitled"
+    }
+
+    /** Wire the header bar's "Save Preset" button to [onSaveRequested]. */
+    fun bindPresetSaving(onSaveRequested: () -> Unit) {
+        savePresetButton?.onClicked { onSaveRequested() }
+    }
+
+    /**
+     * Collect [presets] and keep the Presets tab's list in sync, calling
+     * [onPresetSelected] with a preset's name when its row is activated.
+     */
+    fun bindPresetList(
+        presets: StateFlow<List<PresetSummary>>,
+        scope: CoroutineScope,
+        onPresetSelected: (String) -> Unit
+    ) {
+        scope.launch {
+            presets.collect { summaries ->
+                GLib.idleAdd(0) {
+                    renderPresetList(summaries, onPresetSelected)
+                    false
+                }
+            }
+        }
+    }
+
+    private fun renderPresetList(summaries: List<PresetSummary>, onPresetSelected: (String) -> Unit) {
+        val list = presetList ?: return
+        var child = list.firstChild
+        while (child != null) {
+            val next = child.nextSibling
+            list.remove(child)
+            child = next
+        }
+
+        if (summaries.isEmpty()) {
+            list.append(ActionRow().apply { title = "No presets found."; sensitive = false })
+            return
+        }
+
+        for (summary in summaries) {
+            val row = ActionRow()
+            row.title = summary.name
+            row.subtitle = summary.description.ifBlank { summary.author ?: "" }
+            row.activatable = true
+            row.onActivated { onPresetSelected(summary.name) }
+            list.append(row)
         }
     }
 }

@@ -52,6 +52,16 @@ class AudioEngine : JackClient.AudioProcessor {
     private var scratchA = FloatArray(DEFAULT_MAX_BLOCK)
     private var scratchB = FloatArray(DEFAULT_MAX_BLOCK)
 
+    // Second pair of pre-allocated scratch buffers, used only while a
+    // crossfade is in progress to run the outgoing ("old") chain in parallel
+    // with activeChain (the "new" chain, processed on scratchA/scratchB).
+    private var scratchC = FloatArray(DEFAULT_MAX_BLOCK)
+    private var scratchD = FloatArray(DEFAULT_MAX_BLOCK)
+
+    private var crossfadeOldChain: List<DSPModule> = emptyList()
+    private var crossfadeTotalFrames = 0
+    private var crossfadeRemainingFrames = 0
+
     // -------------------------------------------------------------------------
     // Command enqueue helpers (call from control/UI threads only)
     // -------------------------------------------------------------------------
@@ -81,6 +91,27 @@ class AudioEngine : JackClient.AudioProcessor {
     fun loadModules(modules: List<DSPModule>) {
         enqueue(AudioCommand.LoadChain(modules))
     }
+
+    /**
+     * Cross-fade from the currently active chain to modules built for the
+     * enabled units of [chain] over [fadeDurationMs], instead of the instant
+     * hard-swap [loadChain] performs. Both chains run in parallel on the
+     * audio thread for the fade duration so effect tails (e.g. a delay decay)
+     * aren't abruptly cut off.
+     */
+    fun crossfadeToChain(chain: Chain, fadeDurationMs: Int = DEFAULT_CROSSFADE_MS) {
+        val modules = DSPModuleFactory.createChain(chain, currentSampleRate())
+        val fadeFrames = (currentSampleRate() * fadeDurationMs / 1000f).toInt().coerceAtLeast(1)
+        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames))
+    }
+
+    /** Cross-fade to pre-built [modules] over [fadeFrames] samples. */
+    fun crossfadeToModules(modules: List<DSPModule>, fadeFrames: Int) {
+        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames))
+    }
+
+    /** Whether a crossfade is currently in progress on the audio thread. */
+    fun isCrossfading(): Boolean = crossfadeRemainingFrames > 0
 
     /** Update a parameter of the module at [index] on the next block boundary. */
     fun updateParameter(index: Int, name: String, value: Float) {
@@ -197,9 +228,52 @@ class AudioEngine : JackClient.AudioProcessor {
         }
         inputLevel = kotlin.math.sqrt(inputSumSquares / framesToCopy)
 
-        // Run the DSP chain (or pass through when empty).
+        // Run the DSP chain (or pass through when empty), blending against a
+        // decaying outgoing chain if a crossfade is in progress.
         val chain = activeChain
-        if (chain.isEmpty()) {
+        if (crossfadeRemainingFrames > 0) {
+            ensureScratch(framesToCopy)
+            val a = scratchA
+            val b = scratchB
+            val c = scratchC
+            val d = scratchD
+            for (i in 0 until framesToCopy) {
+                val sample = input.get(i)
+                a[i] = sample
+                c[i] = sample
+            }
+
+            var srcNew = a
+            var dstNew = b
+            var srcOld = c
+            var dstOld = d
+            runBlocking {
+                for (module in chain) {
+                    module.process(srcNew, dstNew, framesToCopy)
+                    val tmp = srcNew
+                    srcNew = dstNew
+                    dstNew = tmp
+                }
+                for (module in crossfadeOldChain) {
+                    module.process(srcOld, dstOld, framesToCopy)
+                    val tmp = srcOld
+                    srcOld = dstOld
+                    dstOld = tmp
+                }
+            }
+
+            val startRemaining = crossfadeRemainingFrames
+            for (i in 0 until framesToCopy) {
+                val remaining = (startRemaining - i).coerceAtLeast(0)
+                val gainOld = remaining.toFloat() / crossfadeTotalFrames
+                output.put(i, srcOld[i] * gainOld + srcNew[i] * (1f - gainOld))
+            }
+
+            crossfadeRemainingFrames = (crossfadeRemainingFrames - framesToCopy).coerceAtLeast(0)
+            if (crossfadeRemainingFrames == 0) {
+                crossfadeOldChain = emptyList()
+            }
+        } else if (chain.isEmpty()) {
             for (i in 0 until framesToCopy) {
                 output.put(i, input.get(i))
             }
@@ -261,7 +335,20 @@ class AudioEngine : JackClient.AudioProcessor {
 
     private fun applyCommand(command: AudioCommand) {
         when (command) {
-            is AudioCommand.LoadChain -> activeChain = command.modules
+            is AudioCommand.LoadChain -> {
+                activeChain = command.modules
+                // An ordinary structural swap must win over any in-flight fade:
+                // continuing to blend against a chain the caller just replaced
+                // would be confusing, so drop it and hard-swap instead.
+                crossfadeOldChain = emptyList()
+                crossfadeRemainingFrames = 0
+            }
+            is AudioCommand.CrossfadeToChain -> {
+                crossfadeOldChain = activeChain
+                activeChain = command.modules
+                crossfadeTotalFrames = command.fadeFrames.coerceAtLeast(1)
+                crossfadeRemainingFrames = crossfadeTotalFrames
+            }
             is AudioCommand.SetParameter -> {
                 val module = activeChain.getOrNull(command.index)
                 module?.setParameter(command.name, command.value)
@@ -276,12 +363,16 @@ class AudioEngine : JackClient.AudioProcessor {
     private fun ensureScratch(size: Int) {
         if (scratchA.size < size) scratchA = FloatArray(size)
         if (scratchB.size < size) scratchB = FloatArray(size)
+        if (scratchC.size < size) scratchC = FloatArray(size)
+        if (scratchD.size < size) scratchD = FloatArray(size)
     }
 
     private fun preallocateScratch(bufferSize: Int) {
         val size = maxOf(bufferSize, DEFAULT_MAX_BLOCK)
         if (scratchA.size < size) scratchA = FloatArray(size)
         if (scratchB.size < size) scratchB = FloatArray(size)
+        if (scratchC.size < size) scratchC = FloatArray(size)
+        if (scratchD.size < size) scratchD = FloatArray(size)
     }
 
     private fun currentSampleRate(): Int {
@@ -316,6 +407,7 @@ class AudioEngine : JackClient.AudioProcessor {
         private const val CLIENT_NAME = "AmpChain"
         private const val COMMAND_QUEUE_CAPACITY = 256
         private const val DEFAULT_MAX_BLOCK = 8192
+        const val DEFAULT_CROSSFADE_MS = 200
 
         private val logger: Logger = Logger.getLogger(AudioEngine::class.java.name)
     }

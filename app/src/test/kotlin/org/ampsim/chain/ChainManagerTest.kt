@@ -119,7 +119,7 @@ class ChainManagerTest {
     }
 
     @Test
-    fun loadPresetPublishesPresetLoadedThenChainModified() {
+    fun loadPresetPublishesOnlyPresetLoaded() {
         val bus = RecordingEventBus()
         val manager = ChainManager(bus)
         val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1, unit2))
@@ -127,9 +127,62 @@ class ChainManagerTest {
         manager.loadPreset(preset)
 
         assertEquals(preset.chain, manager.chain.value)
-        assertEquals(
-            listOf(UIEvent.PresetLoaded(preset), UIEvent.ChainModified(preset.chain)),
-            bus.published
-        )
+        assertEquals(listOf<UIEvent>(UIEvent.PresetLoaded(preset)), bus.published)
+    }
+
+    @Test
+    fun loadPresetSetsActivePreset() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus)
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+
+        assertEquals(null, manager.activePreset.value)
+        manager.loadPreset(preset)
+        assertEquals(preset, manager.activePreset.value)
+    }
+
+    @Test
+    fun everyStructuralMutatorClearsActivePreset() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1, unit2)))
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1, unit2))
+
+        manager.loadPreset(preset)
+        assertEquals(preset, manager.activePreset.value)
+        manager.addUnit(unit1)
+        assertEquals(null, manager.activePreset.value)
+
+        manager.loadPreset(preset)
+        manager.removeUnit("1")
+        assertEquals(null, manager.activePreset.value)
+
+        manager.loadPreset(preset)
+        manager.moveUnit(0, 1)
+        assertEquals(null, manager.activePreset.value)
+
+        manager.loadPreset(preset)
+        manager.setUnitEnabled("1", false)
+        assertEquals(null, manager.activePreset.value)
+
+        manager.loadPreset(preset)
+        manager.setUnitParameter("1", "drive", 42f)
+        assertEquals(null, manager.activePreset.value)
+
+        manager.loadPreset(preset)
+        manager.setChain(Chain(listOf(unit1)))
+        assertEquals(null, manager.activePreset.value)
+    }
+
+    @Test
+    fun markSavedSetsActivePresetWithoutPublishingOrChangingTheLiveChain() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1)))
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+
+        manager.markSaved(preset)
+
+        assertEquals(preset, manager.activePreset.value)
+        assertEquals(Chain(listOf(unit1)), manager.chain.value)
+        assertEquals(emptyList<UIEvent>(), bus.published)
     }
 }

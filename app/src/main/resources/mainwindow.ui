@@ -121,7 +121,19 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             <property name="child">
               <object class="AdwToolbarView">
                 <child type="top">
-                  <object class="AdwHeaderBar"></object>
+                  <object class="AdwHeaderBar">
+                    <child type="title">
+                      <object class="AdwWindowTitle" id="preset_title">
+                        <property name="title" translatable="yes">Untitled</property>
+                      </object>
+                    </child>
+                    <child type="end">
+                      <object class="GtkButton" id="save_preset_button">
+                        <property name="icon-name">document-save-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Save Preset</property>
+                      </object>
+                    </child>
+                  </object>
                 </child>
                 <property name="content">
                   <object class="AdwViewStack" id="content_stack">
@@ -163,10 +175,21 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         <property name="title" translatable="yes">Presets</property>
                         <property name="icon-name">folder-open-symbolic</property>
                         <property name="child">
-                          <object class="AdwStatusPage">
-                            <property name="title" translatable="yes">Presets</property>
-                            <property name="description" translatable="yes">No presets found.</property>
-                            <property name="icon-name">folder-open-symbolic</property>
+                          <object class="GtkScrolledWindow">
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
+                            <property name="child">
+                              <object class="GtkListBox" id="preset_list">
+                                <property name="selection-mode">0</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <style>
+                                  <class name="boxed-list"/>
+                                </style>
+                              </object>
+                            </property>
                           </object>
                         </property>
                       </object>
