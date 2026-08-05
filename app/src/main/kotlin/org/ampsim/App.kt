@@ -146,7 +146,7 @@ class App {
 
     /** Mount the Chain Editor canvas into the window's editor page. */
     fun bindChainEditor(window: AppWindow) = window.bindChainEditor(
-        ChainEditor(chainEditorModel) { window.setLibraryPanelVisible(true) }
+        ChainEditor(chainEditorModel, onAddUnitRequested = { window.setLibraryPanelVisible(true) })
     )
 
     /** Mount the Library browser into the Chain Editor page's sidebar. */

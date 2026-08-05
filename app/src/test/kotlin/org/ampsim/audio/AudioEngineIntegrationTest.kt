@@ -2,6 +2,9 @@ package org.ampsim.audio
 
 import java.nio.FloatBuffer
 import kotlinx.coroutines.runBlocking
+import org.ampsim.dsp.BaseDSPModule
+import org.ampsim.dsp.ParameterInfo
+import org.ampsim.dsp.ParameterKind
 import org.ampsim.dsp.effects.GenericAmp
 import org.ampsim.dsp.effects.GenericDelay
 import org.ampsim.dsp.effects.GenericOverdrive
@@ -69,6 +72,49 @@ class AudioEngineIntegrationTest {
 
         // Now, on the block boundary, the new value has been applied.
         assertEquals(99f, amp.getParameter("gain"))
+    }
+
+    /**
+     * A minimal [BaseDSPModule] declaring a BOOLEAN and a CHOICE parameter,
+     * to confirm [AudioEngine.updateParameter] treats them exactly like a
+     * continuous one: [ParameterKind] is a UI-presentation concern only,
+     * storage stays a plain Float end-to-end (see [ParameterInfo]).
+     */
+    private class FixtureModule : BaseDSPModule() {
+        override val type = "fixture"
+        override val parameters = listOf(
+            ParameterInfo(name = "bright", min = 0f, max = 1f, default = 0f, kind = ParameterKind.BOOLEAN),
+            ParameterInfo(
+                name = "mode", min = 0f, max = 2f, default = 0f,
+                kind = ParameterKind.CHOICE, choices = listOf("Clean", "Crunch", "Lead")
+            )
+        )
+
+        override suspend fun process(input: FloatArray, output: FloatArray, nframes: Int): Result<Unit> {
+            validateBuffers(input, output, nframes)?.let { return it }
+            input.copyInto(output, 0, 0, nframes)
+            return Result.success(Unit)
+        }
+    }
+
+    @Test
+    fun booleanAndChoiceParametersApplyOnBlockBoundariesJustLikeContinuousOnes() {
+        val engine = AudioEngine()
+        val module = FixtureModule()
+        engine.loadModules(listOf(module))
+        processBlock(engine, FloatArray(blockSize) { 0.1f }) // apply LoadChain
+
+        engine.updateParameter(0, "bright", 1f)
+        engine.updateParameter(0, "mode", 2f)
+
+        // Not applied yet — still queued for the next block boundary.
+        assertEquals(0f, module.getParameter("bright"))
+        assertEquals(0f, module.getParameter("mode"))
+
+        processBlock(engine, FloatArray(blockSize) { 0.1f })
+
+        assertEquals(1f, module.getParameter("bright"))
+        assertEquals(2f, module.getParameter("mode"))
     }
 
     @Test

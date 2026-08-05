@@ -12,6 +12,9 @@ import org.gnome.gtk.Label
 import org.gnome.gtk.Orientation
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.pow
+import kotlin.math.round
 import kotlin.math.sin
 
 /**
@@ -19,6 +22,17 @@ import kotlin.math.sin
  * physical dial. Value changes come from a vertical drag (up increases, down
  * decreases) or the scroll wheel, matching how software knobs are normally
  * driven with a mouse rather than trying to track click angle directly.
+ *
+ * [logarithmic] maps the knob's travel through a log curve instead of a
+ * linear one, so a parameter like a filter frequency moves proportionally
+ * (e.g. an octave per unit of travel) rather than bunching all its useful
+ * range into a sliver of the knob's sweep. Requires `min > 0`. [step], when
+ * greater than zero, snaps the value to that increment from [min].
+ *
+ * [showValueLabel] controls the built-in numeric readout under the knob.
+ * Standalone dials (e.g. the sidebar's noise-gate threshold) want it; a dial
+ * paired with its own companion entry field (see `parameterTile()`) doesn't
+ * — that entry is the readout, and showing both duplicates the same number.
  */
 class Dial(
     val min: Float,
@@ -26,18 +40,23 @@ class Dial(
     initialValue: Float,
     private val unitLabel: String = "",
     private val decimals: Int = 2,
+    private val logarithmic: Boolean = false,
+    private val step: Float = 0f,
+    private val showValueLabel: Boolean = true,
     private val onChanged: (Float) -> Unit = {}
-) : Box(Orientation.VERTICAL, 2) {
+) : Box(Orientation.VERTICAL, 2), ParameterControl {
 
     private val knob = DrawingArea()
     private val valueLabel = Label("")
 
-    var value: Float = initialValue.coerceIn(min, max)
+    override var value: Float = applyConstraints(initialValue)
         private set
 
     private var dragStartValue = value
 
     init {
+        require(step >= 0f) { "step ($step) must be >= 0" }
+        require(!logarithmic || min > 0f) { "logarithmic Dial requires min > 0 (got $min)" }
         addCssClass("chain-dial")
         halign = Align.CENTER
 
@@ -60,16 +79,36 @@ class Dial(
         knob.addController(scrollController)
 
         append(knob)
-        append(valueLabel)
+        if (showValueLabel) append(valueLabel)
 
         updateLabel()
     }
 
-    private fun scrollStep(): Float = (max - min) * SCROLL_STEP_FRACTION
+    /** Map a value in [min, max] to a normalized travel fraction in [0, 1]. */
+    private fun valueToT(v: Float): Float = if (logarithmic) {
+        ln(v / min) / ln(max / min)
+    } else {
+        (v - min) / (max - min)
+    }
+
+    /** Inverse of [valueToT]: map a normalized travel fraction back to a value. */
+    private fun tToValue(t: Float): Float = if (logarithmic) {
+        (min * (max / min).toDouble().pow(t.toDouble())).toFloat()
+    } else {
+        min + t * (max - min)
+    }
+
+    /** Clamp to range and, if [step] is set, snap to the nearest increment from [min]. */
+    private fun applyConstraints(v: Float): Float {
+        val clamped = v.coerceIn(min, max)
+        if (step <= 0f) return clamped
+        return (min + round((clamped - min) / step) * step).coerceIn(min, max)
+    }
 
     /** Recompute [value] from a single scroll-wheel step (positive = scroll down/decrease). */
     internal fun applyScroll(deltaY: Double) {
-        setValue(value - deltaY.toFloat() * scrollStep())
+        val newT = (valueToT(value) - deltaY.toFloat() * SCROLL_STEP_FRACTION).coerceIn(0f, 1f)
+        setValue(tToValue(newT))
     }
 
     /**
@@ -81,16 +120,16 @@ class Dial(
      * to control instead of feeling twitchier.
      */
     internal fun applyDrag(offsetY: Double) {
-        val range = max - min
         val dragDistanceForFullRange = knob.height.takeIf { it > 0 }?.let { it * DRAG_HEIGHT_MULTIPLES }
             ?: FALLBACK_DRAG_PIXELS_FOR_FULL_RANGE
-        val delta = (-offsetY / dragDistanceForFullRange).toFloat() * range
-        setValue(dragStartValue + delta)
+        val tDelta = (-offsetY / dragDistanceForFullRange).toFloat()
+        val newT = (valueToT(dragStartValue) + tDelta).coerceIn(0f, 1f)
+        setValue(tToValue(newT))
     }
 
-    /** Set the value, clamping to range and notifying [onChanged] if it actually changed. */
+    /** Set the value, clamping/snapping to range and notifying [onChanged] if it actually changed. */
     fun setValue(newValue: Float) {
-        val clamped = newValue.coerceIn(min, max)
+        val clamped = applyConstraints(newValue)
         if (clamped == value) return
         value = clamped
         updateLabel()
@@ -99,8 +138,8 @@ class Dial(
     }
 
     /** Sync the displayed value without notifying [onChanged] (e.g. an external chain reload). */
-    fun setValueSilently(newValue: Float) {
-        val clamped = newValue.coerceIn(min, max)
+    override fun setValueSilently(newValue: Float) {
+        val clamped = applyConstraints(newValue)
         if (clamped == value) return
         value = clamped
         updateLabel()
@@ -126,7 +165,7 @@ class Dial(
         val trackRadius = radius - trackWidth
         val bezelWidth = radius * BEZEL_WIDTH_FRACTION
 
-        val t = if (max > min) ((value - min) / (max - min)).coerceIn(0f, 1f) else 0f
+        val t = if (max > min) valueToT(value).coerceIn(0f, 1f) else 0f
         val valueClockDeg = START_ANGLE_DEG + t * SWEEP_DEGREES
 
         // Knob body: a radial gradient lit from the upper-left gives the cap a

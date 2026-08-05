@@ -3,6 +3,7 @@ package org.ampsim.ui.chain
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gnome.gtk.Gtk
@@ -122,5 +123,67 @@ class DialTest {
 
         assertFalse(dial.value < dial.min)
         assertFalse(dial.value > dial.max)
+    }
+
+    // ── Logarithmic scale ────────────────────────────────────────────────────
+
+    @Test
+    fun logarithmicDialRequiresAPositiveMinimum() {
+        assertFailsWith<IllegalArgumentException> {
+            Dial(min = 0f, max = 100f, initialValue = 10f, logarithmic = true)
+        }
+    }
+
+    @Test
+    fun logarithmicScrollStaysWithinRangeAndMovesInTheRightDirection() {
+        val dial = Dial(min = 20f, max = 20000f, initialValue = 1000f, logarithmic = true)
+
+        dial.applyScroll(-1.0)
+        assertTrue(dial.value > 1000f)
+        assertTrue(dial.value <= 20000f)
+
+        dial.applyScroll(1.0)
+        dial.applyScroll(1.0)
+        assertTrue(dial.value < 20000f)
+    }
+
+    @Test
+    fun logarithmicDialGivesEqualTravelToEachDecadeUnlikeALinearOne() {
+        // A log dial centered between 20 and 20000 (a 1000x span, i.e. 3 decades)
+        // should sit near sqrt(20 * 20000) ~= 632, not the linear midpoint ~10010.
+        val logDial = Dial(min = 20f, max = 20000f, initialValue = 20f, logarithmic = true)
+        logDial.applyDrag(-70.0) // half of the fallback full-range drag distance (140px)
+
+        assertTrue(logDial.value in 300f..1200f, "expected a value near the geometric midpoint, was ${logDial.value}")
+
+        val linearDial = Dial(min = 20f, max = 20000f, initialValue = 20f)
+        linearDial.applyDrag(-70.0)
+
+        assertTrue(linearDial.value > 9000f, "linear dial should have moved to near its arithmetic midpoint, was ${linearDial.value}")
+    }
+
+    // ── Step snapping ────────────────────────────────────────────────────────
+
+    @Test
+    fun negativeStepIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            Dial(min = 0f, max = 10f, initialValue = 5f, step = -1f)
+        }
+    }
+
+    @Test
+    fun setValueSnapsToTheNearestStepFromMin() {
+        val dial = Dial(min = 0f, max = 10f, initialValue = 0f, step = 2f)
+
+        dial.setValue(3f)
+
+        assertEquals(4f, dial.value)
+    }
+
+    @Test
+    fun initialValueIsAlsoSnappedToStep() {
+        val dial = Dial(min = 0f, max = 10f, initialValue = 3f, step = 2f)
+
+        assertEquals(4f, dial.value)
     }
 }

@@ -3,13 +3,16 @@ package org.ampsim.ui.chain
 import org.ampsim.dsp.DSPModuleFactory
 import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ParameterInfo
+import org.ampsim.dsp.ParameterKind
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import org.ampsim.ui.Debouncer
 import org.ampsim.ui.libraryDragType
 import org.ampsim.ui.parameterTile
 import org.gnome.adw.Clamp
 import org.gnome.gdk.ContentProvider
 import org.gnome.gdk.DragAction
+import org.gnome.glib.GLib
 import org.gnome.gobject.Value
 import org.gnome.gtk.Align
 import org.gnome.gtk.Box
@@ -36,7 +39,8 @@ import java.util.UUID
  * Canvas widget that renders a [Chain] as a linear, top-to-bottom signal
  * flow of unit rows. Supports drag-and-drop reordering, a right-click stub
  * context menu per unit, a stub "add unit" entry point into the library, and
- * an expandable per-unit parameter section with a [Dial] per DSP parameter.
+ * an expandable per-unit parameter section with a [ParameterControl] per DSP
+ * parameter — left-clicking a row selects it and reveals that drawer.
  *
  * Rows are updated and reordered in place on every [render] call rather than
  * rebuilt from scratch, so reordering a long chain stays cheap.
@@ -45,7 +49,15 @@ class ChainEditor(
     val model: ChainEditorModel = ChainEditorModel(),
     /** Resolves display names for modules dropped in from the Library panel. */
     private val moduleCatalog: ModuleCatalog = ModuleCatalog.bundled,
-    private val onAddUnitRequested: () -> Unit = {}
+    private val onAddUnitRequested: () -> Unit = {},
+    /**
+     * Builds the [Debouncer] used to coalesce a continuous parameter's rapid
+     * onChanged calls before they reach [ChainEditorModel.setUnitParameter].
+     * One fresh instance per tile (a shared instance would coalesce unrelated
+     * parameters against each other). Overridable so tests can run the
+     * debounce logic synchronously without a real GLib main loop.
+     */
+    private val newParameterDebouncer: () -> Debouncer = { Debouncer() }
 ) : Box(Orientation.VERTICAL, ROOT_SPACING) {
 
     private val rowsBox = Box(Orientation.VERTICAL, ROW_SPACING)
@@ -133,8 +145,8 @@ class ChainEditor(
         } else {
             row.root.addCssClass(BYPASSED_CSS_CLASS)
         }
-        for ((info, dial) in row.dials) {
-            dial.setValueSilently(unit.parameters[info.name] ?: info.default)
+        for ((info, control) in row.controls) {
+            control.setValueSilently(unit.parameters[info.name] ?: info.default)
         }
     }
 
@@ -190,7 +202,7 @@ class ChainEditor(
 
         val parameterInfos = DSPModuleFactory.parametersFor(unit.type)
         var expander: Expander? = null
-        val dials = mutableListOf<Pair<ParameterInfo, Dial>>()
+        val controls = mutableListOf<Pair<ParameterInfo, ParameterControl>>()
 
         chassis.append(content)
         if (parameterInfos.isNotEmpty()) {
@@ -205,8 +217,8 @@ class ChainEditor(
             paramsFlow.rowSpacing = 12
 
             for (info in parameterInfos) {
-                val (dial, tile) = buildParameterTile(unit, info)
-                dials.add(info to dial)
+                val (control, tile) = buildParameterTile(unit, info)
+                controls.add(info to control)
                 paramsFlow.append(tile)
             }
             paramsPanel.append(paramsFlow)
@@ -233,17 +245,28 @@ class ChainEditor(
         val contextMenu = buildContextMenu(unit.id)
         contextMenu.setParent(root)
 
-        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, contextMenu, expander, dials)
+        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, contextMenu, content, expander, controls)
 
         toggle.onStateSet { state ->
             model.setUnitEnabled(unit.id, state)
             false
         }
 
-        val clickGesture = GestureClick()
-        clickGesture.setButton(SECONDARY_BUTTON)
-        clickGesture.onPressed { _, _, _ -> showContextMenu(row) }
-        root.addController(clickGesture)
+        // Scoped to the header (content) rather than the whole row: root is an
+        // ancestor of the Expander below, and a root-level gesture would race
+        // the Expander's own built-in click-to-toggle on its title, opening
+        // and immediately re-closing the drawer on the same click. content is
+        // a sibling of the Expander, not an ancestor, so a click landing on
+        // the drawer/title never reaches this controller at all.
+        val primaryClickGesture = GestureClick()
+        primaryClickGesture.setButton(PRIMARY_BUTTON)
+        primaryClickGesture.onPressed { _, _, _ -> selectRow(row) }
+        content.addController(primaryClickGesture)
+
+        val secondaryClickGesture = GestureClick()
+        secondaryClickGesture.setButton(SECONDARY_BUTTON)
+        secondaryClickGesture.onPressed { _, _, _ -> showContextMenu(row) }
+        root.addController(secondaryClickGesture)
 
         val dragSource = DragSource()
         dragSource.setActions(DragAction.MOVE)
@@ -290,13 +313,37 @@ class ChainEditor(
         return cable
     }
 
-    /** Build a labeled [Dial] tile for [info], seeded from [unit]'s stored value or the parameter default. */
-    private fun buildParameterTile(unit: EffectUnit, info: ParameterInfo): Pair<Dial, Widget> =
-        parameterTile(
+    /**
+     * Build a labeled parameter tile for [info], seeded from [unit]'s stored
+     * value or the parameter default. Continuous (dial + numeric entry)
+     * changes are coalesced through a per-tile [Debouncer] before reaching
+     * [ChainEditorModel.setUnitParameter]; toggle/dropdown changes are
+     * discrete and applied immediately. Every change also flashes the tile
+     * with [PARAMETER_UPDATED_CSS_CLASS] as visual feedback.
+     */
+    private fun buildParameterTile(unit: EffectUnit, info: ParameterInfo): Pair<ParameterControl, Widget> {
+        lateinit var tileWidget: Widget
+        val isContinuous = info.kind == ParameterKind.CONTINUOUS_LINEAR || info.kind == ParameterKind.CONTINUOUS_LOG
+        val debouncer = if (isContinuous) newParameterDebouncer() else null
+
+        val (control, tile) = parameterTile(
             info = info,
             initialValue = unit.parameters[info.name] ?: info.default,
-            onChanged = { newValue -> model.setUnitParameter(unit.id, info.name, newValue) }
+            onChanged = { newValue ->
+                flashTile(tileWidget)
+                val propagate = { model.setUnitParameter(unit.id, info.name, newValue) }
+                if (debouncer != null) debouncer.trigger(propagate) else propagate()
+            }
         )
+        tileWidget = tile
+        return control to tile
+    }
+
+    /** Briefly mark [tile] as just-changed, giving visual feedback for the edit. */
+    private fun flashTile(tile: Widget) {
+        tile.addCssClass(PARAMETER_UPDATED_CSS_CLASS)
+        GLib.timeoutAddOnce(PARAMETER_UPDATED_FLASH_MS) { tile.removeCssClass(PARAMETER_UPDATED_CSS_CLASS) }
+    }
 
     private fun buildContextMenu(unitId: String): Popover {
         val menuBox = Box(Orientation.VERTICAL, 0)
@@ -336,6 +383,12 @@ class ChainEditor(
     private fun showContextMenu(row: ChainUnitRow) {
         model.selectUnit(row.unitId)
         row.contextMenu.popup()
+    }
+
+    /** Select [row] and reveal its parameter drawer, if it has one and it's collapsed. */
+    private fun selectRow(row: ChainUnitRow) {
+        model.selectUnit(row.unitId)
+        row.expander?.let { if (!it.expanded) it.expanded = true }
     }
 
     private fun onRowDragBegin(unitId: String) {
@@ -449,7 +502,14 @@ class ChainEditor(
 
     internal fun expanderFor(unitId: String): Expander? = rowsById[unitId]?.expander
 
-    internal fun dialsFor(unitId: String): List<Pair<ParameterInfo, Dial>> = rowsById[unitId]?.dials ?: emptyList()
+    /** The row's header (drag handle / title / enable switch) — where the primary-click select gesture lives. */
+    internal fun headerWidgetFor(unitId: String): Widget? = rowsById[unitId]?.headerContent
+
+    internal fun controlsFor(unitId: String): List<Pair<ParameterInfo, ParameterControl>> =
+        rowsById[unitId]?.controls ?: emptyList()
+
+    /** Left-click a row: select it and reveal its parameter drawer, as [selectRow] would. */
+    internal fun simulateSelect(unitId: String) = rowsById[unitId]?.let { selectRow(it) }
 
     internal fun simulateDragBegin(unitId: String) = onRowDragBegin(unitId)
     internal fun simulateDragEnd(unitId: String) = onRowDragEnd(unitId)
@@ -473,8 +533,9 @@ class ChainEditor(
         val typeLabel: Label,
         val toggle: Switch,
         val contextMenu: Popover,
+        val headerContent: Box,
         val expander: Expander?,
-        val dials: List<Pair<ParameterInfo, Dial>>
+        val controls: List<Pair<ParameterInfo, ParameterControl>>
     )
 
     companion object {
@@ -484,11 +545,14 @@ class ChainEditor(
         /** Board column width, in px, before the Clamp starts centering it. */
         private const val BOARD_MAX_WIDTH = 620
         private const val BOARD_TIGHTENING_THRESHOLD = 480
+        private const val PRIMARY_BUTTON = 1
         private const val SECONDARY_BUTTON = 3
         private const val DRAGGING_CSS_CLASS = "chain-unit-row--dragging"
         private const val DROP_TARGET_CSS_CLASS = "chain-unit-row--drop-target"
         private const val BYPASSED_CSS_CLASS = "chain-unit-row--bypassed"
         private const val CANVAS_DROP_TARGET_CSS_CLASS = "chain-editor-canvas--drop-target"
+        private const val PARAMETER_UPDATED_CSS_CLASS = "chain-dial-tile--updated"
+        private const val PARAMETER_UPDATED_FLASH_MS = 400
         internal const val REMOVE_MENU_ITEM_NAME = "chain-unit-context-menu-remove"
         internal const val DUPLICATE_MENU_ITEM_NAME = "chain-unit-context-menu-duplicate"
         internal const val RENAME_MENU_ITEM_NAME = "chain-unit-context-menu-rename"

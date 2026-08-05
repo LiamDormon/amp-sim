@@ -10,12 +10,15 @@ import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ModuleDescriptor
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import org.ampsim.ui.Debouncer
+import org.ampsim.ui.DialWithEntry
 import org.gnome.gtk.DragSource
 import org.gnome.gtk.DropTarget
 import org.gnome.gtk.GestureClick
 import org.gnome.gtk.Gtk
 import org.gnome.gtk.Widget
 
+private const val PRIMARY_MOUSE_BUTTON = 1
 private const val SECONDARY_MOUSE_BUTTON = 3
 
 class ChainEditorTest {
@@ -296,19 +299,30 @@ class ChainEditorTest {
         assertEquals(null, contextMenu.parent)
     }
 
-    // ── Expandable parameter dials ───────────────────────────────────────────
+    // ── Expandable parameter controls ────────────────────────────────────────
+
+    /**
+     * The default [ChainEditor] debounces continuous-parameter propagation
+     * through a real [Debouncer] scheduled on the GLib main loop, which these
+     * tests never run (see [ensureGtkIsInitialized]). Tests that need to
+     * observe propagation synchronously build the editor with this immediate
+     * scheduler instead, so the debounce logic still runs — just with no
+     * delay — rather than being bypassed.
+     */
+    private fun editorWithImmediateDebounce(model: ChainEditorModel) =
+        ChainEditor(model, newParameterDebouncer = { Debouncer(schedule = { _, action -> action() }) })
 
     @Test
-    fun eachRowHasACollapsedExpanderWithADialPerDeclaredParameter() {
+    fun eachRowHasACollapsedExpanderWithAControlPerDeclaredParameter() {
         val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit2, unit3))))
 
         val overdriveExpander = editor.expanderFor("1")
         assertNotNull(overdriveExpander)
         assertFalse(overdriveExpander.expanded)
-        assertEquals(setOf("drive", "tone", "level"), editor.dialsFor("1").map { it.first.name }.toSet())
+        assertEquals(setOf("drive", "tone", "level"), editor.controlsFor("1").map { it.first.name }.toSet())
 
-        assertEquals(setOf("gain", "bass", "mid", "treble", "master"), editor.dialsFor("2").map { it.first.name }.toSet())
-        assertEquals(setOf("time", "feedback", "mix"), editor.dialsFor("3").map { it.first.name }.toSet())
+        assertEquals(setOf("gain", "bass", "mid", "treble", "master"), editor.controlsFor("2").map { it.first.name }.toSet())
+        assertEquals(setOf("time", "feedback", "mix"), editor.controlsFor("3").map { it.first.name }.toSet())
     }
 
     @Test
@@ -324,28 +338,90 @@ class ChainEditorTest {
     }
 
     @Test
-    fun dialsSeedFromTheUnitsStoredParameterOrTheDeclaredDefault() {
+    fun controlsSeedFromTheUnitsStoredParameterOrTheDeclaredDefault() {
         val customized = unit1.setParameter("drive", 33f)
         val editor = ChainEditor(ChainEditorModel(Chain(listOf(customized))))
 
-        val dials = editor.dialsFor("1").associate { it.first.name to it.second }
-        assertEquals(33f, dials.getValue("drive").value)
-        // "tone" was never set on the unit, so the dial falls back to the
+        val controls = editor.controlsFor("1").associate { it.first.name to it.second }
+        assertEquals(33f, controls.getValue("drive").value)
+        // "tone" was never set on the unit, so the control falls back to the
         // parameter's declared default (0.5) rather than 0.
-        assertEquals(0.5f, dials.getValue("tone").value)
+        assertEquals(0.5f, controls.getValue("tone").value)
     }
 
     @Test
     fun movingADialUpdatesTheModelParameterButDoesNotRebuildTheChain() {
         val model = ChainEditorModel(Chain(listOf(unit1)))
-        val editor = ChainEditor(model)
+        val editor = editorWithImmediateDebounce(model)
         val structuralRebuilds = mutableListOf<Chain>()
         model.addListener { structuralRebuilds.add(it) }
 
-        val driveDial = editor.dialsFor("1").first { it.first.name == "drive" }.second
+        val driveDial = editor.controlsFor("1").first { it.first.name == "drive" }.second as DialWithEntry
         driveDial.setValue(40f)
 
         assertEquals(40f, model.units().first().getParameter("drive"))
         assertTrue(structuralRebuilds.isEmpty())
+    }
+
+    @Test
+    fun rapidDialMovesAreDebouncedToOnlyTheLastValue() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        var scheduledAction: (() -> Unit)? = null
+        val editor = ChainEditor(
+            model,
+            newParameterDebouncer = { Debouncer(schedule = { _, action -> scheduledAction = action }) }
+        )
+
+        val driveDial = editor.controlsFor("1").first { it.first.name == "drive" }.second as DialWithEntry
+        driveDial.setValue(10f)
+        driveDial.setValue(20f)
+        driveDial.setValue(30f)
+
+        // Nothing has propagated to the model yet — every burst call only
+        // re-armed the (fake, unfired) scheduled action.
+        assertEquals(0f, model.units().first().getParameter("drive"))
+
+        scheduledAction?.invoke()
+
+        assertEquals(30f, model.units().first().getParameter("drive"))
+    }
+
+    @Test
+    fun leftClickIsWiredToAPrimaryButtonGestureOnTheHeaderNotTheWholeRow() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1))))
+
+        // Scoped to the header, not editor.contextMenuFor("1")!!.parent!! (the
+        // whole row): a row-level gesture would be an ancestor of the
+        // Expander and race its own click-to-toggle. See ChainEditor.kt's
+        // createRow for why this must stay off the row.
+        val header = editor.headerWidgetFor("1")!!
+        val primaryClickGestures = controllersOf(header)
+            .filterIsInstance<GestureClick>()
+            .filter { it.button == PRIMARY_MOUSE_BUTTON }
+
+        assertTrue(primaryClickGestures.isNotEmpty())
+    }
+
+    @Test
+    fun selectingARowSelectsItInTheModelAndExpandsItsCollapsedDrawer() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val editor = ChainEditor(model)
+
+        assertFalse(editor.expanderFor("1")!!.expanded)
+
+        editor.simulateSelect("1")
+
+        assertEquals("1", model.selectedUnitId.value)
+        assertTrue(editor.expanderFor("1")!!.expanded)
+    }
+
+    @Test
+    fun selectingARowLeavesAnAlreadyExpandedDrawerExpanded() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1))))
+        editor.expanderFor("1")!!.expanded = true
+
+        editor.simulateSelect("1")
+
+        assertTrue(editor.expanderFor("1")!!.expanded)
     }
 }

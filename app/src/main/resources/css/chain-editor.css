@@ -271,6 +271,77 @@
   min-height: 2.75em;
 }
 
+/* The sole numeric readout for a continuous parameter (Dial.kt's own label is
+ * suppressed alongside it — see showValueLabel), so it keeps the same lit-well
+ * look .chain-dial-value used to have on its own. Sized by Entry's own
+ * width-chars in ParameterTile.kt, not a min-width, so it stays knob-sized
+ * instead of stretching to fill the tile column. */
+.chain-dial-entry {
+  font-size: 0.6875em;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  color: @amp_accent_soft;
+  padding: 0.125em 0.375em;
+  background-color: alpha(#000, 0.55);
+  background-image: none;
+  border: 1px solid alpha(#000, 0.5);
+  border-radius: 0.1875em;
+}
+
+.chain-dial-entry.error {
+  border-color: #e01b24;
+  box-shadow: 0 0 0 0.0625em alpha(#e01b24, 0.5);
+}
+
+/* Boolean parameter switch — same true-bypass LED language as the row's own
+ * enable switch (.chain-unit-toggle), just sized for the params cavity. */
+.chain-parameter-toggle-switch {
+  min-width: 2.25em;
+  min-height: 1.1875em;
+  border-radius: 999px;
+  background-image: none;
+  background-color: alpha(#000, 0.45);
+  border: 1px solid alpha(#000, 0.5);
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.6);
+}
+
+.chain-parameter-toggle-switch slider {
+  background-color: #d8dade;
+  border-radius: 999px;
+  box-shadow: 0 0.0625em 0.0625em alpha(#000, 0.4);
+}
+
+.chain-parameter-toggle-switch:checked {
+  background-color: @amp_accent_dark;
+  background-image: linear-gradient(to bottom, @amp_accent, @amp_accent_deep);
+  box-shadow:
+    0 0 0.375em alpha(@amp_accent, 0.5),
+    inset 0 0.0625em 0.0625em alpha(#fff, 0.25);
+}
+
+/* Choice parameter dropdown, kept in the same recessed-cavity language as
+ * the numeric readout rather than a stock combo box. */
+.chain-parameter-dropdown-control {
+  font-size: 0.6875em;
+  color: @window_fg_color;
+  background-color: alpha(#000, 0.55);
+  background-image: none;
+  border: 1px solid alpha(#000, 0.5);
+  border-radius: 0.1875em;
+  padding: 0.125em 0.5em;
+}
+
+/* Momentary highlight on any parameter change (dial drag settling, toggle
+ * flip, dropdown pick, entry commit) — added on change and removed by
+ * ChainEditor.kt after PARAMETER_UPDATED_FLASH_MS, so the transition below
+ * is what actually reads as a "flash" back to the tile's resting state. */
+.chain-dial-tile--updated {
+  background-color: alpha(@amp_accent, 0.12);
+  border-radius: 0.375em;
+  box-shadow: 0 0 0 0.0625em alpha(@amp_accent, 0.4);
+  transition: background-color 350ms ease-out, box-shadow 350ms ease-out;
+}
+
 /* ── Signal-flow lead between chassis cards ──────────────────────────────── */
 
 .chain-connector {
