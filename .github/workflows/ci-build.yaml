@@ -32,7 +32,7 @@ jobs:
             libglib2.0-bin \
             libgtk-4-dev \
             libadwaita-1-dev \
-            libjack-jackd2-dev \ 
+            libjack-jackd2-dev \
             jackd2 \
             xvfb
 
