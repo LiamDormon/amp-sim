@@ -121,15 +121,14 @@ class PresetsViewTest {
         assertTrue(view.tagButtonFor("metal")!!.active)
     }
 
-    // ── Row buttons: Load and Delete are always visible, right-aligned ─────
+    // ── Row buttons: Load and More are always visible, right-aligned ───
 
     @Test
-    fun eachRowHasRightAlignedLoadDeleteAndMoreButtons() {
+    fun eachRowHasRightAlignedLoadAndMoreButtons() {
         val view = newView()
         view.renderAllPresetsForTest(listOf(summary("A")))
 
         assertNotNull(view.loadButtonFor("A"))
-        assertNotNull(view.deleteButtonFor("A"))
         assertNotNull(view.moreButtonFor("A"))
     }
 
@@ -161,7 +160,7 @@ class PresetsViewTest {
     // ── Context menu actions trigger (Rename/Duplicate/Export) ─────────────
 
     @Test
-    fun contextMenuHasRenameDuplicateExportActions() {
+    fun contextMenuHasRenameDuplicateExportDeleteActions() {
         val view = newView()
         view.renderAllPresetsForTest(listOf(summary("A")))
 
@@ -173,7 +172,8 @@ class PresetsViewTest {
             listOf(
                 PresetsView.RENAME_MENU_ITEM_NAME,
                 PresetsView.DUPLICATE_MENU_ITEM_NAME,
-                PresetsView.EXPORT_MENU_ITEM_NAME
+                PresetsView.EXPORT_MENU_ITEM_NAME,
+                PresetsView.DELETE_MENU_ITEM_NAME
             ),
             childNames(menuContent)
         )
@@ -232,21 +232,6 @@ class PresetsViewTest {
     }
 
     // ── Confirm before delete ───────────────────────────────────────────────
-
-    @Test
-    fun deleteButtonDoesNotCallOnDeleteRequestedDirectly() {
-        var deleted: String? = null
-        val view = newView(onDelete = { deleted = it })
-        view.renderAllPresetsForTest(listOf(summary("A")))
-
-        // The row's Delete button is wired to open a confirmation dialog, not
-        // to call onDeleteRequested directly — proven by contract (see
-        // clickingDeleteInTheContextMenuOpensAConfirmationBeforeCallingOnDeleteRequested
-        // below, which exercises the post-confirmation path via a test hook since
-        // AlertDialog.present() requires a realized window this test can't provide).
-        assertNotNull(view.deleteButtonFor("A"))
-        assertNull(deleted)
-    }
 
     @Test
     fun clickingDeleteInTheContextMenuOpensAConfirmationBeforeCallingOnDeleteRequested() {
