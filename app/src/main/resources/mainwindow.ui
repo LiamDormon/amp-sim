@@ -108,6 +108,49 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         </child>
                       </object>
                     </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">1</property>
+                        <property name="spacing">6</property>
+                        <property name="margin-start">6</property>
+                        <property name="margin-end">6</property>
+                        <property name="margin-bottom">6</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Noise Gate</property>
+                            <style>
+                              <class name="caption-heading"/>
+                            </style>
+                            <property name="xalign">0</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="orientation">0</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkBox" id="noise_gate_dial_container">
+                                <property name="hexpand">true</property>
+                                <property name="valign">3</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkToggleButton" id="noise_gate_toggle">
+                                <property name="icon-name">audio-volume-muted-symbolic</property>
+                                <property name="hexpand">false</property>
+                                <property name="valign">3</property>
+                                <property name="tooltip-text" translatable="yes">Noise Gate Toggle</property>
+                                <property name="accessible-role">78</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Noise Gate Toggle</property>
+                                  <property name="description" translatable="yes">Mutes the input below a threshold to tame hiss, hum or feedback</property>
+                                </accessibility>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </property>
               </object>

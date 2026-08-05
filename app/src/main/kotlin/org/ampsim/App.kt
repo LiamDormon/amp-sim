@@ -157,6 +157,9 @@ class App {
     /** Bind audio controls (playback toggle and volume display) to the audio engine. */
     fun bindAudioControls(window: AppWindow) = window.bindAudioControls(audioEngine)
 
+    /** Bind the sidebar's noise gate toggle and threshold dial to the audio engine. */
+    fun bindNoiseGateControls(window: AppWindow) = window.bindNoiseGateControls(audioEngine)
+
     /** Bind the audio input selector to the audio engine and persisted config. */
     fun bindAudioInputSelector(window: AppWindow) = window.bindInputDeviceSelector(
         engine = audioEngine,
@@ -319,6 +322,7 @@ fun main(args: Array<String>) {
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         appInstance.bindAudioControls(mainWindow)
+        appInstance.bindNoiseGateControls(mainWindow)
         appInstance.bindAudioInputSelector(mainWindow)
         appInstance.bindChainEditor(mainWindow)
         appInstance.bindLibraryView(mainWindow)

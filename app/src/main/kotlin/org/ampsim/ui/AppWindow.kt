@@ -14,7 +14,9 @@ import org.gnome.gtk.StringList
 import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
+import org.ampsim.audio.NoiseGate
 import org.ampsim.ui.chain.ChainEditor
+import org.ampsim.ui.chain.Dial
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
 
@@ -39,6 +41,14 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "input_device_combo")
     @JvmField
     var inputDeviceCombo: DropDown? = null
+
+    @GtkChild(name = "noise_gate_toggle")
+    @JvmField
+    var noiseGateToggle: ToggleButton? = null
+
+    @GtkChild(name = "noise_gate_dial_container")
+    @JvmField
+    var noiseGateDialContainer: Box? = null
 
     @GtkChild(name = "chain_editor_host")
     @JvmField
@@ -84,6 +94,29 @@ class AppWindow : ApplicationWindow {
         }
         volumeLevel?.apply {
             fraction = 0.0
+        }
+    }
+
+    /**
+     * Bind the sidebar's noise gate toggle and threshold dial to the audio
+     * engine. Unlike chain effects, this is a built-in program feature: off
+     * by default, applied to whatever input is currently selected.
+     */
+    fun bindNoiseGateControls(engine: AudioEngine) {
+        val dial = Dial(
+            min = NoiseGate.MIN_THRESHOLD_DB,
+            max = NoiseGate.MAX_THRESHOLD_DB,
+            initialValue = NoiseGate.DEFAULT_THRESHOLD_DB,
+            unitLabel = "dB",
+            decimals = 0
+        ) { thresholdDb -> engine.setNoiseGateThreshold(thresholdDb) }
+        noiseGateDialContainer?.append(dial)
+
+        noiseGateToggle?.apply {
+            active = false // Off by default; opt in per session like playback.
+            onToggled {
+                engine.setNoiseGateEnabled(active)
+            }
         }
     }
 

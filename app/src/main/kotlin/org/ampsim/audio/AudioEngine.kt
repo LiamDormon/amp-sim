@@ -48,6 +48,10 @@ class AudioEngine : JackClient.AudioProcessor {
     private var activeChain: List<DSPModule> = emptyList()
     private var rtPlaybackEnabled = true
 
+    // Built-in input gate, applied ahead of the DSP chain (see process()). Not
+    // an insertable DSPModule: a program feature toggled from the sidebar.
+    private val noiseGate = NoiseGate()
+
     // Pre-allocated scratch buffers reused across process() calls.
     private var scratchA = FloatArray(DEFAULT_MAX_BLOCK)
     private var scratchB = FloatArray(DEFAULT_MAX_BLOCK)
@@ -128,6 +132,16 @@ class AudioEngine : JackClient.AudioProcessor {
         enqueue(AudioCommand.SetPlayback(enabled))
     }
 
+    /** Toggle the built-in input noise gate on/off. */
+    fun setNoiseGateEnabled(enabled: Boolean) {
+        enqueue(AudioCommand.SetNoiseGateEnabled(enabled))
+    }
+
+    /** Set the noise gate's threshold in dB. */
+    fun setNoiseGateThreshold(thresholdDb: Float) {
+        enqueue(AudioCommand.SetNoiseGateThreshold(thresholdDb))
+    }
+
     // -------------------------------------------------------------------------
     // Routing / device selection (not part of the real-time path)
     // -------------------------------------------------------------------------
@@ -186,6 +200,8 @@ class AudioEngine : JackClient.AudioProcessor {
 
             jackClient.activate()
 
+            noiseGate.sampleRate = currentSampleRate()
+
             updateStatus()
             applyRouting()
             logger.info("Audio engine started (sampleRate=${jackClient.getSampleRate()}, bufferSize=${jackClient.getBufferSize()})")
@@ -219,6 +235,12 @@ class AudioEngine : JackClient.AudioProcessor {
             for (i in 0 until framesToClear) output.put(i, 0f)
             return
         }
+
+        // Gate the raw input ahead of the chain (and its metering), so a
+        // closed gate also silences whatever the chain would otherwise be fed,
+        // instead of chopping off a chain effect's own decaying tail after the
+        // fact.
+        noiseGate.process(input, framesToCopy)
 
         // Input metering (RMS) computed over the signal actually fed to the chain.
         var inputSumSquares = 0f
@@ -357,6 +379,8 @@ class AudioEngine : JackClient.AudioProcessor {
                 for (module in activeChain) module.reset()
             }
             is AudioCommand.SetPlayback -> rtPlaybackEnabled = command.enabled
+            is AudioCommand.SetNoiseGateEnabled -> noiseGate.enabled = command.enabled
+            is AudioCommand.SetNoiseGateThreshold -> noiseGate.thresholdDb = command.thresholdDb
         }
     }
 

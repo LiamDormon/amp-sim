@@ -33,6 +33,12 @@ sealed interface AudioCommand {
     /** Enable or disable audio output (metering keeps running when disabled). */
     data class SetPlayback(val enabled: Boolean) : AudioCommand
 
+    /** Enable or disable the built-in input noise gate. */
+    data class SetNoiseGateEnabled(val enabled: Boolean) : AudioCommand
+
+    /** Set the noise gate's threshold in dB (clamped by [NoiseGate.thresholdDb]). */
+    data class SetNoiseGateThreshold(val thresholdDb: Float) : AudioCommand
+
     /**
      * Cross-fade from the currently active chain to [modules] over [fadeFrames]
      * samples. Both chains run in parallel on the audio thread for the fade

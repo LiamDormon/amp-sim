@@ -108,6 +108,46 @@ template $AppWindow: Adw.ApplicationWindow {
                 }
             }
           }
+
+          // Built-in noise gate: a program feature (not a chain effect) for
+          // taming hiss/hum/feedback on whatever input is currently selected.
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 6;
+            margin-start: 6;
+            margin-end: 6;
+            margin-bottom: 6;
+
+            Gtk.Label {
+              label: _("Noise Gate");
+              styles [ "caption-heading" ]
+              xalign: 0;
+            }
+
+            Gtk.Box {
+                orientation: horizontal;
+                spacing: 6;
+
+                Gtk.Box noise_gate_dial_container {
+                  hexpand: true;
+                  valign: center;
+                }
+
+                Gtk.ToggleButton noise_gate_toggle {
+                  icon-name: "audio-volume-muted-symbolic";
+                  hexpand: false;
+                  valign: center;
+
+                  tooltip-text: _("Noise Gate Toggle");
+                  accessible-role: toggle_button;
+
+                  accessibility {
+                    label: _("Noise Gate Toggle");
+                    description: _("Mutes the input below a threshold to tame hiss, hum or feedback");
+                  }
+                }
+            }
+          }
         };
       };
     };
