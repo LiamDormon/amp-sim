@@ -24,7 +24,7 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Set up native build tools
+      - name: Set up system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -32,12 +32,24 @@ jobs:
             libglib2.0-bin \
             libgtk-4-dev \
             libadwaita-1-dev \
-            libjack-jackd2-dev
+            libjack-jackd2-dev \ 
+            jackd2 \
+            xvfb
 
       - name: Verify native tools
         run: |
           blueprint-compiler --version
           glib-compile-resources --version
+          jackd --version
+          xvfb-run --help >/dev/null
+
+      - name: Start JACK dummy server
+        run: |
+          export JACK_NO_AUDIO_RESERVATION=1
+          jackd --no-realtime -d dummy -r 48000 -p 1024 &
+          disown
+          timeout 10 jack_wait -w
+          echo "JACK dummy server is up."
 
       - name: Setup gradle
         uses: gradle/actions/setup-gradle@v4
@@ -45,4 +57,4 @@ jobs:
       - name: Gradle build
         run: |
           chmod +x ./gradlew
-          ./gradlew build
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" ./gradlew build
