@@ -5,6 +5,7 @@
     <file>gtk/mainwindow.blp</file>
     <file>css/chain-editor.css</file>
     <file>css/presets.css</file>
+    <file>css/library.css</file>
   </gresource>
 </gresources>
 

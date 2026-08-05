@@ -1,9 +1,13 @@
 package org.ampsim.ui.chain
 
 import org.ampsim.dsp.DSPModuleFactory
+import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ParameterInfo
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import org.ampsim.ui.libraryDragType
+import org.ampsim.ui.parameterTile
+import org.gnome.adw.Clamp
 import org.gnome.gdk.ContentProvider
 import org.gnome.gdk.DragAction
 import org.gnome.gobject.Value
@@ -26,6 +30,7 @@ import org.gnome.gtk.SelectionMode
 import org.gnome.gtk.Switch
 import org.gnome.gtk.Widget
 import org.javagi.gobject.types.Types
+import java.util.UUID
 
 /**
  * Canvas widget that renders a [Chain] as a linear, top-to-bottom signal
@@ -38,6 +43,8 @@ import org.javagi.gobject.types.Types
  */
 class ChainEditor(
     val model: ChainEditorModel = ChainEditorModel(),
+    /** Resolves display names for modules dropped in from the Library panel. */
+    private val moduleCatalog: ModuleCatalog = ModuleCatalog.bundled,
     private val onAddUnitRequested: () -> Unit = {}
 ) : Box(Orientation.VERTICAL, ROOT_SPACING) {
 
@@ -54,11 +61,21 @@ class ChainEditor(
 
         rowsBox.addCssClass("chain-editor-canvas")
         rowsBox.vexpand = true
+        installCanvasDropTarget()
+
+        // A pedalboard is a physical object with a size. Left to fill the window
+        // the cards stretch to arm's length and the content strands itself at
+        // the two edges, so the board is held to a readable column instead.
+        val clamp = Clamp()
+        clamp.maximumSize = BOARD_MAX_WIDTH
+        clamp.tighteningThreshold = BOARD_TIGHTENING_THRESHOLD
+        clamp.vexpand = true
+        clamp.setChild(rowsBox)
 
         val scrolled = ScrolledWindow()
         scrolled.setPolicy(PolicyType.NEVER, PolicyType.AUTOMATIC)
         scrolled.vexpand = true
-        scrolled.setChild(rowsBox)
+        scrolled.setChild(clamp)
 
         val addButton = Button.withLabel("+ Add Unit")
         addButton.addCssClass("chain-editor-add-button")
@@ -109,6 +126,13 @@ class ChainEditor(
         val typeText = unit.type.replaceFirstChar { it.uppercase() }
         if (row.typeLabel.text != typeText) row.typeLabel.text = typeText
         if (row.toggle.active != unit.enabled) row.toggle.active = unit.enabled
+        // Drives the chassis's status rail: a bypassed unit reads as out of the
+        // signal path from across the board, not just by its switch position.
+        if (unit.enabled) {
+            row.root.removeCssClass(BYPASSED_CSS_CLASS)
+        } else {
+            row.root.addCssClass(BYPASSED_CSS_CLASS)
+        }
         for ((info, dial) in row.dials) {
             dial.setValueSilently(unit.parameters[info.name] ?: info.default)
         }
@@ -146,6 +170,7 @@ class ChainEditor(
         typeRow.halign = Align.START
 
         val typeLabel = Label(unit.type.replaceFirstChar { it.uppercase() })
+        typeLabel.addCssClass("amp-legend")
         typeLabel.addCssClass("chain-unit-type-badge")
         typeLabel.halign = Align.START
 
@@ -177,7 +202,7 @@ class ChainEditor(
             paramsFlow.selectionMode = SelectionMode.NONE
             paramsFlow.setMinChildrenPerLine(1)
             paramsFlow.columnSpacing = 16
-            paramsFlow.rowSpacing = 10
+            paramsFlow.rowSpacing = 12
 
             for (info in parameterInfos) {
                 val (dial, tile) = buildParameterTile(unit, info)
@@ -193,6 +218,7 @@ class ChainEditor(
             // in the system accent color regardless of our CSS. Owning the
             // Label directly makes it just another widget we can style.
             val expanderLabel = Label("Parameters")
+            expanderLabel.addCssClass("amp-legend")
             expanderLabel.addCssClass("chain-unit-expander-label")
 
             expander = Expander()
@@ -228,16 +254,24 @@ class ChainEditor(
         dragSource.onDragEnd { _, _ -> onRowDragEnd(unit.id) }
         root.addController(dragSource)
 
-        val dropTarget = DropTarget(Types.STRING, DragAction.MOVE)
+        // Accepts both kinds of drag that can land on a row: MOVE for the
+        // editor's own reorders, COPY for a new module dragged in from the
+        // Library. The payload says which one it actually is.
+        val dropTarget = DropTarget(Types.STRING, DragAction.MOVE, DragAction.COPY)
         dropTarget.onEnter { _, _ ->
-            onRowDragEnter(unit.id)
-            setOf(DragAction.MOVE)
+            onRowDragEnter(unit.id, isLibraryDrag(dropTarget))
+            preferredAction(dropTarget)
         }
-        dropTarget.onMotion { _, _ -> setOf(DragAction.MOVE) }
+        dropTarget.onMotion { _, _ -> preferredAction(dropTarget) }
         dropTarget.onLeave { onRowDragLeave(unit.id) }
         dropTarget.onDrop { value, _, _ ->
-            val sourceId = runCatching { value?.getString() }.getOrNull()
-            sourceId?.let { onRowDropped(it, unit.id) } ?: false
+            val payload = runCatching { value?.getString() }.getOrNull() ?: return@onDrop false
+            val libraryType = libraryDragType(payload)
+            if (libraryType != null) {
+                onLibraryModuleDropped(libraryType, model.indexOf(unit.id))
+            } else {
+                onRowDropped(payload, unit.id)
+            }
         }
         root.addController(dropTarget)
 
@@ -257,27 +291,12 @@ class ChainEditor(
     }
 
     /** Build a labeled [Dial] tile for [info], seeded from [unit]'s stored value or the parameter default. */
-    private fun buildParameterTile(unit: EffectUnit, info: ParameterInfo): Pair<Dial, Widget> {
-        val nameLabel = Label(info.name.replaceFirstChar { it.uppercase() })
-        nameLabel.addCssClass("chain-dial-name")
-        nameLabel.halign = Align.CENTER
-
-        val initial = unit.parameters[info.name] ?: info.default
-        val dial = Dial(
-            min = info.min,
-            max = info.max,
-            initialValue = initial,
-            unitLabel = info.unit,
+    private fun buildParameterTile(unit: EffectUnit, info: ParameterInfo): Pair<Dial, Widget> =
+        parameterTile(
+            info = info,
+            initialValue = unit.parameters[info.name] ?: info.default,
             onChanged = { newValue -> model.setUnitParameter(unit.id, info.name, newValue) }
         )
-
-        val tile = Box(Orientation.VERTICAL, 4)
-        tile.addCssClass("chain-dial-tile")
-        tile.append(nameLabel)
-        tile.append(dial)
-
-        return dial to tile
-    }
 
     private fun buildContextMenu(unitId: String): Popover {
         val menuBox = Box(Orientation.VERTICAL, 0)
@@ -329,8 +348,61 @@ class ChainEditor(
         rowsById[unitId]?.root?.removeCssClass(DRAGGING_CSS_CLASS)
     }
 
-    private fun onRowDragEnter(targetId: String) {
-        if (draggingUnitId != null && draggingUnitId != targetId) {
+    /**
+     * Drop zone covering the canvas itself, so a module dragged from the
+     * Library can be dropped below the last row — or onto a chain with no rows
+     * at all, which has no per-row targets to hit — and land at the end.
+     *
+     * Deliberately COPY-only: reorder drags are MOVE, so they never match here
+     * and stay owned by the per-row targets that know the intended position.
+     */
+    private fun installCanvasDropTarget() {
+        val canvasDropTarget = DropTarget(Types.STRING, DragAction.COPY)
+        canvasDropTarget.onEnter { _, _ ->
+            rowsBox.addCssClass(CANVAS_DROP_TARGET_CSS_CLASS)
+            setOf(DragAction.COPY)
+        }
+        canvasDropTarget.onMotion { _, _ -> setOf(DragAction.COPY) }
+        canvasDropTarget.onLeave { rowsBox.removeCssClass(CANVAS_DROP_TARGET_CSS_CLASS) }
+        canvasDropTarget.onDrop { value, _, _ ->
+            rowsBox.removeCssClass(CANVAS_DROP_TARGET_CSS_CLASS)
+            val payload = runCatching { value?.getString() }.getOrNull() ?: return@onDrop false
+            val type = libraryDragType(payload) ?: return@onDrop false
+            onLibraryModuleDropped(type, model.units().size)
+        }
+        rowsBox.addController(canvasDropTarget)
+    }
+
+    /**
+     * Add a brand-new unit of [type] at [index], as dragged in from the Library.
+     *
+     * The module is only described here — building the actual [org.ampsim.dsp.DSPModule]
+     * happens later, off this call stack, when [ChainEditorModel]'s mutation
+     * reaches the audio engine as a whole rebuilt chain.
+     */
+    private fun onLibraryModuleDropped(type: String, index: Int): Boolean {
+        val descriptor = moduleCatalog.descriptorFor(type) ?: return false
+        if (index < 0) return false
+        model.addUnit(
+            EffectUnit(
+                id = UUID.randomUUID().toString(),
+                type = descriptor.type,
+                model = descriptor.name
+            ),
+            index
+        )
+        return true
+    }
+
+    /** True when the in-flight drag came from the Library rather than the canvas. */
+    private fun isLibraryDrag(target: DropTarget): Boolean =
+        target.currentDrop?.actions?.contains(DragAction.COPY) == true
+
+    private fun preferredAction(target: DropTarget): Set<DragAction> =
+        if (isLibraryDrag(target)) setOf(DragAction.COPY) else setOf(DragAction.MOVE)
+
+    private fun onRowDragEnter(targetId: String, isLibraryDrag: Boolean = false) {
+        if (isLibraryDrag || (draggingUnitId != null && draggingUnitId != targetId)) {
             rowsById[targetId]?.root?.addCssClass(DROP_TARGET_CSS_CLASS)
         }
     }
@@ -362,6 +434,9 @@ class ChainEditor(
 
     internal fun rowCount(): Int = rowsById.size
 
+    /** The canvas widget itself, which owns the end-of-chain drop zone. */
+    internal fun canvasWidget(): Widget = rowsBox
+
     internal fun isDropTargetHighlighted(unitId: String): Boolean =
         rowsById[unitId]?.root?.hasCssClass(DROP_TARGET_CSS_CLASS) == true
 
@@ -378,9 +453,18 @@ class ChainEditor(
 
     internal fun simulateDragBegin(unitId: String) = onRowDragBegin(unitId)
     internal fun simulateDragEnd(unitId: String) = onRowDragEnd(unitId)
-    internal fun simulateDragEnter(targetId: String) = onRowDragEnter(targetId)
+    internal fun simulateDragEnter(targetId: String, isLibraryDrag: Boolean = false) =
+        onRowDragEnter(targetId, isLibraryDrag)
     internal fun simulateDragLeave(targetId: String) = onRowDragLeave(targetId)
     internal fun simulateDrop(sourceId: String, targetId: String): Boolean = onRowDropped(sourceId, targetId)
+
+    /** Drop a Library module of [type] onto the row for [targetId], taking its position. */
+    internal fun simulateLibraryDropOnRow(type: String, targetId: String): Boolean =
+        onLibraryModuleDropped(type, model.indexOf(targetId))
+
+    /** Drop a Library module of [type] onto empty canvas, appending it to the chain. */
+    internal fun simulateLibraryDropOnCanvas(type: String): Boolean =
+        onLibraryModuleDropped(type, model.units().size)
 
     private data class ChainUnitRow(
         val unitId: String,
@@ -394,11 +478,17 @@ class ChainEditor(
     )
 
     companion object {
-        private const val ROOT_SPACING = 6
-        private const val ROW_SPACING = 4
+        private const val ROOT_SPACING = 0
+        private const val ROW_SPACING = 0
+
+        /** Board column width, in px, before the Clamp starts centering it. */
+        private const val BOARD_MAX_WIDTH = 620
+        private const val BOARD_TIGHTENING_THRESHOLD = 480
         private const val SECONDARY_BUTTON = 3
         private const val DRAGGING_CSS_CLASS = "chain-unit-row--dragging"
         private const val DROP_TARGET_CSS_CLASS = "chain-unit-row--drop-target"
+        private const val BYPASSED_CSS_CLASS = "chain-unit-row--bypassed"
+        private const val CANVAS_DROP_TARGET_CSS_CLASS = "chain-editor-canvas--drop-target"
         internal const val REMOVE_MENU_ITEM_NAME = "chain-unit-context-menu-remove"
         internal const val DUPLICATE_MENU_ITEM_NAME = "chain-unit-context-menu-duplicate"
         internal const val RENAME_MENU_ITEM_NAME = "chain-unit-context-menu-rename"

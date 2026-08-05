@@ -1,12 +1,15 @@
 package org.ampsim.dsp
 
 import org.ampsim.dsp.effects.GenericAmp
+import org.ampsim.dsp.effects.GenericChorus
 import org.ampsim.dsp.effects.GenericDelay
 import org.ampsim.dsp.effects.GenericOverdrive
+import org.ampsim.dsp.effects.GenericReverb
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -17,8 +20,36 @@ class DSPModuleFactoryTest {
         assertTrue(DSPModuleFactory.create("overdrive") is GenericOverdrive)
         assertTrue(DSPModuleFactory.create("amp") is GenericAmp)
         assertTrue(DSPModuleFactory.create("delay") is GenericDelay)
+        assertTrue(DSPModuleFactory.create("reverb") is GenericReverb)
+        assertTrue(DSPModuleFactory.create("chorus") is GenericChorus)
         // Case-insensitive.
         assertTrue(DSPModuleFactory.create("OverDrive") is GenericOverdrive)
+        assertTrue(DSPModuleFactory.create("ReVerb") is GenericReverb)
+    }
+
+    @Test
+    fun everySupportedTypeIsBuildable() {
+        for (type in DSPModuleFactory.supportedTypes) {
+            val module = DSPModuleFactory.create(type)
+            assertNotNull(module, "supportedTypes advertises '$type' but create() returned null")
+            assertEquals(type, module.type)
+        }
+    }
+
+    @Test
+    fun parametersForReturnsDeclaredRanges() {
+        val params = DSPModuleFactory.parametersFor("overdrive")
+        assertEquals(listOf("drive", "tone", "level"), params.map { it.name })
+
+        val drive = params.first { it.name == "drive" }
+        assertEquals(1f, drive.min)
+        assertEquals(50f, drive.max)
+        assertEquals(10f, drive.default)
+    }
+
+    @Test
+    fun parametersForIsEmptyForUnknownType() {
+        assertTrue(DSPModuleFactory.parametersFor("fuzz-o-tron").isEmpty())
     }
 
     @Test

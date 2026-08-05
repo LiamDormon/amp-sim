@@ -1,8 +1,10 @@
 package org.ampsim.dsp
 
 import org.ampsim.dsp.effects.GenericAmp
+import org.ampsim.dsp.effects.GenericChorus
 import org.ampsim.dsp.effects.GenericDelay
 import org.ampsim.dsp.effects.GenericOverdrive
+import org.ampsim.dsp.effects.GenericReverb
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 
@@ -16,7 +18,7 @@ import org.ampsim.model.EffectUnit
 object DSPModuleFactory {
 
     /** Effect [type] identifiers this factory knows how to build. */
-    val supportedTypes: Set<String> = setOf("overdrive", "amp", "delay")
+    val supportedTypes: Set<String> = setOf("overdrive", "amp", "delay", "reverb", "chorus")
 
     /**
      * Create a bare module for the given [type], or `null` if the type is not
@@ -27,6 +29,8 @@ object DSPModuleFactory {
             "overdrive" -> GenericOverdrive(sampleRate)
             "amp" -> GenericAmp(sampleRate)
             "delay" -> GenericDelay(sampleRate)
+            "reverb" -> GenericReverb(sampleRate)
+            "chorus" -> GenericChorus(sampleRate)
             else -> null
         }
 

@@ -2,6 +2,7 @@ package org.ampsim.ui
 
 import java.lang.foreign.MemorySegment
 import org.gnome.adw.ApplicationWindow
+import org.gnome.adw.OverlaySplitView
 import org.gnome.adw.ViewSwitcherSidebar
 import org.gnome.adw.WindowTitle
 import org.gnome.gtk.Box
@@ -14,6 +15,7 @@ import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
 import org.ampsim.ui.chain.ChainEditor
+import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
 
 @GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
@@ -41,6 +43,14 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "chain_editor_host")
     @JvmField
     var chainEditorHost: Box? = null
+
+    @GtkChild(name = "chain_split_view")
+    @JvmField
+    var chainSplitView: OverlaySplitView? = null
+
+    @GtkChild(name = "library_host")
+    @JvmField
+    var libraryHost: Box? = null
 
     @GtkChild(name = "preset_title")
     @JvmField
@@ -156,4 +166,19 @@ class AppWindow : ApplicationWindow {
     fun bindPresetsView(view: PresetsView) {
         presetsHost?.append(view)
     }
+
+    /** Mount the Library browser into the Chain Editor page's sidebar. */
+    fun bindLibraryView(view: LibraryView) {
+        libraryHost?.append(view)
+    }
+
+    /** Show or hide the Library sidebar docked beside the Chain Editor canvas. */
+    fun setLibraryPanelVisible(visible: Boolean) {
+        chainSplitView?.showSidebar = visible
+    }
+
+    /** Whether the Library sidebar is currently revealed. */
+    fun isLibraryPanelVisible(): Boolean = chainSplitView?.showSidebar == true
+
+    fun toggleLibraryPanel() = setLibraryPanelVisible(!isLibraryPanelVisible())
 }

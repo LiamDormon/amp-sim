@@ -6,11 +6,11 @@ using Gtk 4.0;
 using Adw 1;
 
 template $AppWindow: Adw.ApplicationWindow {
-  default-width: 960;
-  default-height: 640;
+  default-width: 1200;
+  default-height: 800;
   width-request: 360;
   height-request: 294;
-  title: _("My App");
+  title: _("Ampsim");
   // Collapse the split view and switch the sidebar into page mode
   // when the window becomes phone-width.
   Adw.Breakpoint {
@@ -152,15 +152,34 @@ template $AppWindow: Adw.ApplicationWindow {
           }
 
           // Page 2 ── Chain Editor
+          // The library browser docks alongside the canvas rather than living
+          // on its own stack page: dragging a module onto the chain only works
+          // if both are on screen at once, and the ViewStack shows one page at
+          // a time. "+ Add Unit" reveals the sidebar.
           Adw.ViewStackPage {
             name: "editor";
             title: _("Chain Editor");
             icon-name: "preferences-system-sharing-symbolic";
 
-            child: Gtk.Box chain_editor_host {
-              orientation: vertical;
+            child: Adw.OverlaySplitView chain_split_view {
+              sidebar-position: end;
+              min-sidebar-width: 280;
+              max-sidebar-width: 420;
+              show-sidebar: false;
               vexpand: true;
               hexpand: true;
+
+              content: Gtk.Box chain_editor_host {
+                orientation: vertical;
+                vexpand: true;
+                hexpand: true;
+              };
+
+              sidebar: Gtk.Box library_host {
+                orientation: vertical;
+                vexpand: true;
+                hexpand: true;
+              };
             };
           }
 
@@ -177,20 +196,7 @@ template $AppWindow: Adw.ApplicationWindow {
             };
           }
 
-          // Page 4 ── Library
-          Adw.ViewStackPage {
-            name: "library";
-            title: _("Library");
-            icon-name: "accessories-dictionary-symbolic";
-
-            child: Adw.StatusPage {
-              title: _("Library");
-              description: _("Not Implemented.");
-              icon-name: "accessories-dictionary-symbolic";
-            };
-          }
-
-          // Page 5 ── Settings
+          // Page 4 ── Settings
           Adw.ViewStackPage {
             name: "settings";
             title: _("Settings");

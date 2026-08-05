@@ -28,6 +28,8 @@ import org.ampsim.persistence.PresetRepository
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.ChainEditorModel
+import org.ampsim.ui.library.LibraryView
+import org.ampsim.ui.library.LibraryViewModel
 import org.ampsim.ui.preset.PresetsView
 import org.ampsim.ui.preset.PresetsViewModel
 import org.ampsim.ui.preset.SavePresetDialog
@@ -64,6 +66,7 @@ class App {
     val eventBus = EventBusImpl()
     val chainManager = ChainManager(eventBus, placeholderChain())
     val chainEditorModel = ChainEditorModel(chainManager)
+    val libraryViewModel = LibraryViewModel()
 
     val presetRepository: PresetRepository = FileSystemPresetRepository(FileSystemPresetRepository.getOrCreatePresetsDir())
     val presetsViewModel = PresetsViewModel(
@@ -143,9 +146,12 @@ class App {
 
     /** Mount the Chain Editor canvas into the window's editor page. */
     fun bindChainEditor(window: AppWindow) = window.bindChainEditor(
-        ChainEditor(chainEditorModel) {
-            System.err.println("Add Unit clicked — library picker not implemented yet.")
-        }
+        ChainEditor(chainEditorModel) { window.setLibraryPanelVisible(true) }
+    )
+
+    /** Mount the Library browser into the Chain Editor page's sidebar. */
+    fun bindLibraryView(window: AppWindow) = window.bindLibraryView(
+        LibraryView(libraryViewModel) { window.setLibraryPanelVisible(false) }
     )
 
     /** Bind audio controls (playback toggle and volume display) to the audio engine. */
@@ -277,7 +283,7 @@ fun main(args: Array<String>) {
     TemplateTypes.register(AppWindow::class.java)
 
     val appInstance = App()
-    val app = Application("org.example.ampsim", ApplicationFlags.DEFAULT_FLAGS)
+    val app = Application("org.ampsim.app", ApplicationFlags.DEFAULT_FLAGS)
 
     app.onActivate {
         appInstance.start()
@@ -302,11 +308,20 @@ fun main(args: Array<String>) {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+        val libraryCssProvider = CssProvider()
+        libraryCssProvider.loadFromResource("/org/ampsim/css/library.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            libraryCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         appInstance.bindAudioControls(mainWindow)
         appInstance.bindAudioInputSelector(mainWindow)
         appInstance.bindChainEditor(mainWindow)
+        appInstance.bindLibraryView(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
         appInstance.bindPresetsView(mainWindow)
 

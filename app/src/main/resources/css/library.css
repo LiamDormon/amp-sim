@@ -1,0 +1,196 @@
+/* Library panel — the module browser docked beside the Chain Editor canvas.
+ *
+ * Follows the design system documented at the top of chain-editor.css, including
+ * its theming rules: every surface here is the user's theme color with a
+ * translucent overlay on top, so the panel picks up a blue, green or light
+ * desktop instead of pinning its own grey. Text is @window_fg_color dimmed with
+ * alpha(). Only edges, shadows and the amber "live" accent are fixed.
+ *
+ * The `.amp-legend` class is defined once in chain-editor.css and reused here —
+ * GTK scopes @define-color per CssProvider, but style classes are global, so
+ * headings and spec labels here are printed identically to the dial and drawer
+ * labels on the board.
+ *
+ * The panel borrows the board's physical vocabulary so the two read as one rig
+ * rather than a canvas with a text list bolted to it:
+ *
+ *   - the module list sits in a RECESSED WELL, the same routed-cavity treatment
+ *     as a pedal's parameter drawer. It also gives the empty space under a
+ *     short list an edge, so it reads as room inside a drawer rather than as an
+ *     unfinished panel.
+ *   - the details panel is a RAISED SPEC PLATE built from the same overlay,
+ *     border and shadow as a pedal chassis — the piece of gear you are about to
+ *     add, shown as gear.
+ *
+ * The parameter dials in the spec plate are deliberately not styled here: they
+ * reuse .chain-dial-* so a knob reads the same whether you are auditioning a
+ * module or tweaking one already on the board.
+ */
+
+@define-color amp_accent #e8a251;
+@define-color amp_accent_soft #eab476;
+
+/* @sidebar_bg_color is libadwaita's own color for a docked side pane, so the
+ * Library sits at the same tone as the navigation sidebar opposite it. */
+.library-view {
+  padding: 0.75em;
+  background-color: @window_bg_color;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.library-header {
+  padding: 0 0.125em 0.75em 0.125em;
+  border-bottom: 1px solid alpha(@window_fg_color, 0.12);
+}
+
+/* Printed like the panel's own nameplate rather than a window title. */
+.library-title {
+  font-size: 0.8125em;
+  color: alpha(@window_fg_color, 0.7);
+}
+
+/* ── Search ──────────────────────────────────────────────────────────────── */
+
+/* Recessed to match the readout wells on the board, so the one control in this
+ * panel belongs to the same hardware as the knobs it sits above. */
+.library-search {
+  min-height: 2.125em;
+  padding: 0 0.5em;
+  background-image: none;
+  background-color: alpha(#000, 0.22);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.375em;
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.35);
+  color: @window_fg_color;
+}
+
+.library-search:focus-within {
+  border-color: alpha(@amp_accent, 0.55);
+  box-shadow:
+    inset 0 0.0625em 0.125em alpha(#000, 0.35),
+    0 0 0 0.125em alpha(@amp_accent, 0.14);
+}
+
+.library-search image {
+  color: alpha(@window_fg_color, 0.5);
+}
+
+/* ── List well ───────────────────────────────────────────────────────────── */
+
+.library-list-well {
+  padding: 0.25em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.5em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+/* ── Category sections ───────────────────────────────────────────────────── */
+
+/* Ties each heading to the rows beneath it: generous air above to separate it
+ * from the previous group, almost none below. Headings take the plain legend
+ * treatment — they are labels, not signal state, so they get no accent. */
+.library-category > title {
+  min-height: 0;
+  padding: 0.875em 0.375em 0.25em 0.375em;
+}
+
+.library-category > title > arrow {
+  min-width: 0.6875em;
+  min-height: 0.6875em;
+  color: alpha(@window_fg_color, 0.45);
+}
+
+.library-category-label {
+  margin-left: 0.5em;
+}
+
+/* ── Module rows ─────────────────────────────────────────────────────────── */
+
+.library-row {
+  padding: 0.4375em 0.5em;
+  border-radius: 0.375em;
+  border: 1px solid transparent;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.library-row:hover {
+  background-color: alpha(@window_fg_color, 0.07);
+  border-color: alpha(@window_fg_color, 0.08);
+}
+
+.library-row-name {
+  font-size: 0.9375em;
+  color: @window_fg_color;
+}
+
+.library-row-drag-handle {
+  opacity: 0.35;
+  color: @window_fg_color;
+}
+
+.library-row--dragging {
+  background-color: alpha(@amp_accent, 0.12);
+  border-color: alpha(@amp_accent, 0.5);
+  opacity: 0.5;
+}
+
+.library-empty {
+  color: alpha(@window_fg_color, 0.5);
+  font-size: 0.875em;
+  margin: 1.5em 0.5em;
+}
+
+/* ── Details: the spec plate ─────────────────────────────────────────────── */
+
+/* Same enclosure treatment as a pedal chassis, so the module you are about to
+ * add is presented as a piece of gear rather than as a caption. */
+.library-details {
+  margin-top: 0.75em;
+  padding: 0.875em;
+  background-color: @sidebar_bg_color;
+  background-image: linear-gradient(to bottom, alpha(#fff, 0.11), alpha(#fff, 0.015));
+  border: 1px solid alpha(#000, 0.4);
+  border-radius: 0.5em;
+  box-shadow:
+    0 0.125em 0.25em alpha(#000, 0.35),
+    inset 0 0.0625em 0 alpha(#fff, 0.08);
+}
+
+.library-details-title {
+  font-size: 1em;
+  font-weight: 700;
+  color: @window_fg_color;
+}
+
+.library-details-description {
+  font-size: 0.875em;
+  color: alpha(@window_fg_color, 0.72);
+}
+
+/* The routed cavity the audition knobs sit in — the drawer from the board,
+ * repeated here at panel scale. */
+.library-details-params {
+  margin-top: 0.125em;
+  padding: 0.625em 0.25em 0.5em 0.25em;
+  background-color: alpha(#000, 0.2);
+  border-radius: 0.375em;
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.32);
+}
+
+/* Label/value pairs rather than sentences: these are measurements, and they
+ * line up so two modules can be compared by eye. Static specs, so no accent —
+ * amber is reserved for values that reflect live signal state. */
+.library-spec-row {
+  padding: 0.1875em 0;
+  border-top: 1px solid alpha(@window_fg_color, 0.1);
+}
+
+.library-spec-value {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.82);
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}

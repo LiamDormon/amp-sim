@@ -6,6 +6,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.ampsim.dsp.ModuleCatalog
+import org.ampsim.dsp.ModuleDescriptor
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.gnome.gtk.DragSource
@@ -139,6 +141,113 @@ class ChainEditorTest {
         editor.simulateDragEnter("1")
 
         assertFalse(editor.isDropTargetHighlighted("1"))
+    }
+
+    // ── Dropping a module in from the Library ───────────────────────────────
+
+    /** Catalog of the types the fixture units use, plus one that isn't in the chain. */
+    private fun libraryCatalog() = ModuleCatalog(
+        listOf(
+            ModuleDescriptor("overdrive", "Generic Overdrive", "Overdrives", "drive"),
+            ModuleDescriptor("amp", "Generic Amp", "Amps", "amp"),
+            ModuleDescriptor("delay", "Generic Delay", "Delays", "echo"),
+            ModuleDescriptor("reverb", "Generic Reverb", "Reverbs", "room")
+        )
+    )
+
+    private fun editorWithLibrary(chain: Chain) =
+        ChainEditor(ChainEditorModel(chain), libraryCatalog())
+
+    @Test
+    fun droppingALibraryModuleOnARowInsertsItAtThatPosition() {
+        val model = ChainEditorModel(Chain(listOf(unit1, unit2)))
+        val editor = ChainEditor(model, libraryCatalog())
+
+        val added = editor.simulateLibraryDropOnRow("reverb", targetId = "2")
+
+        assertTrue(added)
+        assertEquals(3, model.units().size)
+        assertEquals("reverb", model.units()[1].type)
+        assertEquals("Generic Reverb", model.units()[1].model)
+        // The displaced unit keeps its relative order behind the new one.
+        assertEquals(listOf("overdrive", "reverb", "amp"), model.units().map { it.type })
+    }
+
+    @Test
+    fun droppingALibraryModuleOnTheCanvasAppendsItToTheEnd() {
+        val model = ChainEditorModel(Chain(listOf(unit1, unit2)))
+        val editor = ChainEditor(model, libraryCatalog())
+
+        val added = editor.simulateLibraryDropOnCanvas("reverb")
+
+        assertTrue(added)
+        assertEquals(listOf("overdrive", "amp", "reverb"), model.units().map { it.type })
+    }
+
+    @Test
+    fun droppingALibraryModuleOntoAnEmptyChainAddsTheFirstUnit() {
+        val model = ChainEditorModel(Chain(emptyList()))
+        val editor = ChainEditor(model, libraryCatalog())
+
+        val added = editor.simulateLibraryDropOnCanvas("delay")
+
+        assertTrue(added)
+        assertEquals(listOf("delay"), model.units().map { it.type })
+        assertEquals(listOf(model.units()[0].id), editor.rowIdsInOrder())
+    }
+
+    @Test
+    fun droppedLibraryModulesGetDistinctIds() {
+        val model = ChainEditorModel(Chain(emptyList()))
+        val editor = ChainEditor(model, libraryCatalog())
+
+        editor.simulateLibraryDropOnCanvas("delay")
+        editor.simulateLibraryDropOnCanvas("delay")
+
+        val ids = model.units().map { it.id }
+        assertEquals(2, ids.distinct().size, "two dropped units collided on the same id")
+    }
+
+    @Test
+    fun droppingAnUnknownModuleTypeIsRejected() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val editor = ChainEditor(model, libraryCatalog())
+
+        val added = editor.simulateLibraryDropOnCanvas("fuzz-o-tron")
+
+        assertFalse(added)
+        assertEquals(1, model.units().size)
+    }
+
+    @Test
+    fun theCanvasHasItsOwnDropTargetForLibraryModules() {
+        // This target is what catches drops past the last row, and the only
+        // target at all when the chain is empty and has no rows to aim at.
+        val editor = editorWithLibrary(Chain(emptyList()))
+
+        assertTrue(controllersOf(editor.canvasWidget()).any { it is DropTarget })
+    }
+
+    @Test
+    fun aLibraryDragHighlightsTheRowUnderIt() {
+        // A library drag has no source row of its own, so the highlight can't
+        // depend on an in-flight reorder the way a canvas drag does.
+        val editor = editorWithLibrary(Chain(listOf(unit1, unit2)))
+
+        editor.simulateDragEnter("2", isLibraryDrag = true)
+        assertTrue(editor.isDropTargetHighlighted("2"))
+
+        editor.simulateDragLeave("2")
+        assertFalse(editor.isDropTargetHighlighted("2"))
+    }
+
+    @Test
+    fun aRowIsNotHighlightedWhenNoDragIsInFlight() {
+        val editor = editorWithLibrary(Chain(listOf(unit1, unit2)))
+
+        editor.simulateDragEnter("2")
+
+        assertFalse(editor.isDropTargetHighlighted("2"))
     }
 
     // ── Right-click context menu ─────────────────────────────────────────────

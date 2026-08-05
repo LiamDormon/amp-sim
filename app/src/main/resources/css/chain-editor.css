@@ -1,36 +1,62 @@
-/* Chain Editor canvas — restrained, professional pedalboard styling.
+/* Chain Editor canvas — pedalboard styling.
  *
- * Design system:
- *  - Colors are declared once below via @define-color and referenced by name,
- *    instead of repeating hex literals across the file.
- *  - One accent color (@amp_accent, warm amber) means "active/live": the
- *    enabled toggle, a dial's value arc/readout, and hover states. Nothing
- *    else uses color, so the accent stays meaningful instead of decorative.
- *  - Layout values (padding, margin, gaps, radii, icon/knob sizes) are in
- *    `em`, relative to the widget's font size, so the whole canvas scales
- *    with GNOME's text-size accessibility setting instead of being pinned to
- *    fixed pixels. Only true hairlines (1px borders) and shadow blur/offsets
- *    stay in device pixels, matching how GTK's own theme treats them.
- *  - Each unit is a single "chassis" card (.chain-unit-chassis) — the header
- *    row and the parameter drawer share one background/border/radius and the
- *    chassis clips its children (see ChainEditor.kt's Overflow.HIDDEN), so an
- *    open drawer can never poke a square corner past the card's rounded edge.
- *  - Effect type is communicated with text only, never color coding.
+ * ── DESIGN SYSTEM (shared with library.css) ───────────────────────────────
+ *
+ * THEMING — surfaces and text are derived from the user's Adwaita theme, never
+ *   hardcoded, so the app sits correctly on a blue, green or light desktop
+ *   instead of pinning its own grey:
+ *
+ *     fills   `background-color: @window_bg_color` (or @sidebar_bg_color),
+ *             with a translucent `linear-gradient(alpha(#fff,…), alpha(#000,…))`
+ *             layered on top to raise or recess it. The theme's hue shows
+ *             through the overlay, so a pedal on a blue desktop is blue-tinted
+ *             metal rather than neutral grey.
+ *     text    @window_fg_color, dimmed with alpha() for secondary roles. This
+ *             is what keeps the app legible in light themes as well as dark.
+ *     edges   alpha(#000, …) borders and shadows, alpha(#fff, …) bevels.
+ *             Physical objects have dark edges and lit top faces whatever the
+ *             desktop is doing, so these stay theme-independent on purpose.
+ *
+ *   The one exception is @amp_accent below. Everything else follows the user.
+ *
+ * SPACING — one scale, nothing off it:
+ *     0.25em  hairline   0.5em  tight    0.75em  inner
+ *     1em     card       1.5em  section
+ *   Everything is in `em` so the whole canvas tracks GNOME's text-size
+ *   accessibility setting. Only true hairlines (1px borders) and shadow
+ *   blur/offsets stay in device pixels, matching how GTK's own theme does it.
+ *
+ * TYPE — three roles, no others:
+ *     Title    1em / 700              unit and panel names
+ *     Legend   .amp-legend below      every label that names a control or a
+ *                                     field, set the way a pedal enclosure is
+ *                                     silkscreened. The one device shared
+ *                                     across both panels.
+ *     Readout  0.6875em / monospace   numeric values only, in a recessed well
+ *
+ * COLOR — @amp_accent (warm amber) means one thing: this is live. It is used
+ *   only by an enabled unit's status rail and switch, and by a dial's arc and
+ *   readout — the things that reflect actual signal state. Labels, headings and
+ *   static specs deliberately get no color at all, so the accent keeps its
+ *   meaning. Effect type is always text, never color coding.
+ *
+ * STATE — a bypassed unit darkens its status rail and flattens its chassis, so
+ *   the board reads at a glance without checking each switch one by one. The
+ *   switch itself stays at full contrast; it's the control, not the indicator.
+ *
+ * STRUCTURE — each unit is one "chassis" card: header row and parameter drawer
+ *   share a single background/border/radius, and the chassis clips its children
+ *   (ChainEditor.kt sets Overflow.HIDDEN) so an open drawer can never poke a
+ *   square corner past the card's rounded edge.
+ *
+ * NOT THEMED ON PURPOSE — Dial.kt paints the knob itself in Cairo with fixed
+ *   materials (dark cap, white pointer, amber arc). A knob is a physical
+ *   control with its own colouring, and being self-contained it reads correctly
+ *   on a light or a dark chassis alike.
  */
 
-@define-color amp_bg_top #2b2b2e;
-@define-color amp_bg_bottom #19191b;
-@define-color amp_canvas_border #050506;
-
-@define-color amp_chassis_top #46464a;
-@define-color amp_chassis_bottom #2d2d2f;
-@define-color amp_chassis_border #0a0a0b;
-
-@define-color amp_text_primary #f4f5f6;
-@define-color amp_text_muted #babfc6;
-@define-color amp_text_dim #9298a1;
-@define-color amp_text_faint #939aa4;
-
+/* The single app-owned color. Kept out of the theme so "live" means the same
+ * thing on every desktop. */
 @define-color amp_accent #e8a251;
 @define-color amp_accent_dark #b5661f;
 @define-color amp_accent_deep #c97e2e;
@@ -38,16 +64,31 @@
 
 @define-color amp_dropzone #62a0ea;
 
-@define-color amp_toggle_track #19191a;
-@define-color amp_toggle_thumb #d8dade;
+/* ── The one shared type device ──────────────────────────────────────────────
+ * Defined here and used by library.css too: GTK scopes @define-color per
+ * CssProvider, but style classes themselves are global, so both panels get an
+ * identical legend from this single rule. */
 
-.chain-editor {
-  padding: 0.75em;
+.amp-legend {
+  font-size: 0.6875em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@window_fg_color, 0.5);
 }
 
+/* ── Board ───────────────────────────────────────────────────────────────── */
+
+.chain-editor {
+  padding: 1em 1em 0.75em 1em;
+}
+
+/* Recessed into the window surface, and held to a fixed column by an Adw.Clamp
+ * in ChainEditor.kt: a pedalboard is a physical object with a size, not a
+ * surface that stretches to the window. */
 .chain-editor-canvas {
-  padding: 0.875em;
-  background-color: @amp_bg_bottom;
+  padding: 1.25em;
+  background-color: @window_bg_color;
   background-image:
     repeating-linear-gradient(
       125deg,
@@ -56,71 +97,100 @@
       transparent 1px,
       transparent 5px
     ),
-    linear-gradient(to bottom, @amp_bg_top, @amp_bg_bottom);
+    linear-gradient(to bottom, alpha(#000, 0.22), alpha(#000, 0.38));
   border-radius: 0.75em;
-  border: 1px solid @amp_canvas_border;
-  box-shadow: inset 0 0.125em 0.25em alpha(#000, 0.65);
+  border: 1px solid alpha(#000, 0.5);
+  box-shadow: inset 0 0.125em 0.25em alpha(#000, 0.45);
 }
 
 .chain-editor-add-button {
-  margin-top: 0.5em;
-  padding: 0.375em 1.125em;
-  font-weight: 600;
+  margin-top: 1em;
+  padding: 0.5em 1.25em;
+  border-radius: 0.5em;
+  border: 1px solid alpha(@window_fg_color, 0.18);
+  background-image: none;
+  background-color: alpha(@window_fg_color, 0.04);
+  color: alpha(@window_fg_color, 0.75);
+  font-size: 0.8125em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  transition: color 120ms ease-out, border-color 120ms ease-out;
 }
 
 .chain-editor-add-button:hover {
   color: @amp_accent_soft;
+  border-color: alpha(@amp_accent, 0.5);
+  background-color: alpha(@amp_accent, 0.08);
 }
 
 /* ── Chassis (the whole pedal card) ─────────────────────────────────────── */
 
 .chain-unit-row {
-  margin: 0.3125em 0.1875em;
+  margin: 0;
 }
 
 .chain-unit-chassis {
-  background-image: linear-gradient(to bottom, @amp_chassis_top, @amp_chassis_bottom);
-  border: 1px solid @amp_chassis_border;
-  border-radius: 0.625em;
+  background-color: @window_bg_color;
+  background-image: linear-gradient(to bottom, alpha(#fff, 0.14), alpha(#fff, 0.02));
+  border: 1px solid alpha(#000, 0.45);
+  border-radius: 0.5em;
   box-shadow:
-    0 0.1875em 0.3125em alpha(#000, 0.55),
-    inset 0 0.0625em 0 alpha(#fff, 0.08);
+    0 0.1875em 0.3125em alpha(#000, 0.4),
+    inset 0 0.0625em 0 alpha(#fff, 0.09);
+  transition: border-color 120ms ease-out;
 }
 
 .chain-unit-row-content {
-  padding: 0.625em 0.875em;
+  padding: 0.75em 1em;
 }
 
 .chain-unit-drag-handle {
-  opacity: 0.5;
-  color: @amp_text_muted;
+  opacity: 0.45;
+  color: @window_fg_color;
 }
 
 .chain-unit-title {
   font-weight: 700;
-  color: @amp_text_primary;
+  color: @window_fg_color;
 }
 
 .chain-unit-type-badge {
-  font-size: 0.75em;
-  font-weight: 600;
-  color: @amp_text_muted;
-  letter-spacing: 0.05em;
+  color: alpha(@window_fg_color, 0.55);
+}
+
+/* Bypassed: rail goes dark and the enclosure flattens, so a glance down the
+ * board says which pedals are actually in the path. The switch keeps its full
+ * contrast — it is the control, and must stay obvious either way. */
+.chain-unit-row--bypassed .chain-unit-chassis {
+  background-image: linear-gradient(to bottom, alpha(#fff, 0.05), alpha(#000, 0.03));
+  border-left-color: alpha(@window_fg_color, 0.22);
+  box-shadow:
+    0 0.125em 0.25em alpha(#000, 0.3),
+    inset 0 0.0625em 0 alpha(#fff, 0.04);
+}
+
+.chain-unit-row--bypassed .chain-unit-title {
+  color: alpha(@window_fg_color, 0.55);
+}
+
+.chain-unit-row--bypassed .chain-unit-type-badge {
+  color: alpha(@window_fg_color, 0.35);
 }
 
 /* True-bypass-style LED toggle, in the single accent color, instead of a
  * stock iOS-blue switch. */
 .chain-unit-toggle {
-  min-width: 2.375em;
-  min-height: 1.25em;
+  min-width: 2.25em;
+  min-height: 1.1875em;
   border-radius: 999px;
-  background-color: @amp_toggle_track;
-  border: 1px solid @amp_chassis_border;
-  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.7);
+  background-image: none;
+  background-color: alpha(#000, 0.45);
+  border: 1px solid alpha(#000, 0.5);
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.6);
 }
 
 .chain-unit-toggle slider {
-  background-color: @amp_toggle_thumb;
+  background-color: #d8dade;
   border-radius: 999px;
   box-shadow: 0 0.0625em 0.0625em alpha(#000, 0.4);
 }
@@ -139,15 +209,12 @@
   margin: 0;
 }
 
-/* The clickable header row (arrow + "Parameters" label). Same left indent
- * as .chain-unit-row-content (0.875em) so it reads as part of the same card,
- * not a separate strip glued underneath it. */
+/* A footer strip on the card, aligned to the card's own padding rather than
+ * indented to the title text — it belongs to the whole unit, not to the name. */
 .chain-unit-expander > title {
   min-height: 0;
-  padding: 0.375em 0.875em;
-  border-top: 1px solid alpha(#000, 0.3);
-  margin-left: 2.2em;
-  margin-bottom: 0.5em;
+  padding: 0.5em 1em;
+  border-top: 1px solid alpha(#000, 0.25);
 }
 
 /* Our own Label (set via Expander.setLabelWidget), not GTK's implicit one —
@@ -156,11 +223,8 @@
  * .chain-unit-expander > title > label override. Owning the widget directly
  * sidesteps that entirely. */
 .chain-unit-expander-label {
-  font-size: 0.72em;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: @amp_text_dim;
-  margin-left: 2.2em;
+  margin-left: 0.5em;
+  transition: color 120ms ease-out;
 }
 
 .chain-unit-expander > title:hover .chain-unit-expander-label {
@@ -168,28 +232,35 @@
 }
 
 .chain-unit-expander > title > arrow {
-  min-width: 0.6875em;
-  min-height: 0.6875em;
-  margin-left: 2.2em;
+  min-width: 0.75em;
+  min-height: 0.75em;
+  color: alpha(@window_fg_color, 0.5);
 }
 
-/* Recessed control-panel strip the dials sit in, flush against the header
+/* Recessed control-panel cavity the dials sit in, flush against the header
  * above it and clipped to the chassis's own rounded corners. */
 .chain-unit-params-panel {
-  padding: 0.75em 0.625em 0.625em;
-  background-color: alpha(#000, 0.22);
-  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.45);
+  padding: 1em;
+  background-color: alpha(#000, 0.2);
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.35);
 }
 
 .chain-dial-tile {
-  padding: 0.125em 0.375em;
+  padding: 0 0.25em;
 }
 
-.chain-dial-name {
-  font-size: 0.68em;
-  font-weight: 700;
-  color: @amp_text_faint;
-  letter-spacing: 0.06em;
+/* The readout is a lit display, so it keeps a dark well and amber digits on any
+ * theme — the same reasoning as the knob it sits under. */
+.chain-dial-value {
+  font-size: 0.6875em;
+  font-weight: 600;
+  color: @amp_accent_soft;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  padding: 0.125em 0.375em;
+  background-color: alpha(#000, 0.55);
+  border: 1px solid alpha(#000, 0.5);
+  border-radius: 0.1875em;
 }
 
 /* Sole source of the knob's size: Dial.kt sets no fixed content size, so this
@@ -200,24 +271,18 @@
   min-height: 2.75em;
 }
 
-.chain-dial-value {
-  font-size: 0.68em;
-  font-weight: 600;
-  color: @amp_accent_soft;
-  font-family: monospace;
-  padding: 0.0625em 0.3125em;
-  background-color: #100d09;
-  border: 1px solid alpha(#000, 0.6);
-  border-radius: 0.1875em;
-}
-
 /* ── Signal-flow lead between chassis cards ──────────────────────────────── */
 
 .chain-connector {
   min-width: 0.125em;
-  min-height: 0.875em;
-  margin: 0.0625em 0;
-  background-color: #4a4e55;
+  min-height: 1em;
+  background-image: linear-gradient(
+    to bottom,
+    alpha(#000, 0.35),
+    alpha(@window_fg_color, 0.28) 35%,
+    alpha(@window_fg_color, 0.28) 65%,
+    alpha(#000, 0.35)
+  );
   border-radius: 0.125em;
 }
 
@@ -231,7 +296,15 @@
   border-color: @amp_dropzone;
   box-shadow:
     0 0 0 0.125em alpha(@amp_dropzone, 0.7),
-    0 0.1875em 0.3125em alpha(#000, 0.55);
+    0 0.1875em 0.3125em alpha(#000, 0.4);
+}
+
+/* Whole-canvas cue for a module dragged in from the Library, which appends to
+ * the end of the chain rather than taking a specific row's position. */
+.chain-editor-canvas--drop-target {
+  box-shadow:
+    inset 0 0 0 0.125em alpha(@amp_dropzone, 0.6),
+    inset 0 0.125em 0.25em alpha(#000, 0.45);
 }
 
 /* ── Context menu (stub) ─────────────────────────────────────────────────── */

@@ -1,0 +1,32 @@
+[
+  {
+    "type": "amp",
+    "name": "Generic Amp",
+    "category": "Amps",
+    "description": "Three-band tone stack driving a saturating power section. Set the gain for preamp drive and use master to balance against the rest of the chain."
+  },
+  {
+    "type": "overdrive",
+    "name": "Generic Overdrive",
+    "category": "Overdrives",
+    "description": "Soft-clipping pedal-style drive with a one-pole tone control. Push drive for grit, roll tone back to tame the top end."
+  },
+  {
+    "type": "delay",
+    "name": "Generic Delay",
+    "category": "Delays",
+    "description": "Single-tap delay line with feedback and a dry/wet mix. Times up to two seconds; feedback stays below unity so repeats always decay."
+  },
+  {
+    "type": "reverb",
+    "name": "Generic Reverb",
+    "category": "Reverbs",
+    "description": "Schroeder-style room built from four damped comb filters and two allpass stages. Size sets the decay length, damping rolls off the tail's high end."
+  },
+  {
+    "type": "chorus",
+    "name": "Generic Chorus",
+    "category": "Modulations",
+    "description": "LFO-swept delay line mixed against the dry signal. Rate sets the sweep speed, depth how far the pitch wanders."
+  }
+]
