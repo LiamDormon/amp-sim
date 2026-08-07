@@ -23,8 +23,8 @@ data class AudioConfiguration(
 @Serializable
 data class UIConfiguration(
     val theme: String = "system",
-    val windowHeight: Int = 600,
-    val windowWidth: Int = 800,
+    val windowHeight: Int = 800,
+    val windowWidth: Int = 1200,
     val windowMaximised: Boolean = false,
     val sidebarCollapsed: Boolean = false
 ) {

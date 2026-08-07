@@ -184,10 +184,10 @@ template $AppWindow: Adw.ApplicationWindow {
             starts-section: true;
             section-title: _("Main");
 
-            child: Adw.StatusPage {
-              title: _("Dashboard");
-              description: _("Use the Chain Editor to build your signal chain.");
-              icon-name: "view-grid-symbolic";
+            child: Gtk.Box dashboard_host {
+              orientation: vertical;
+              vexpand: true;
+              hexpand: true;
             };
           }
 

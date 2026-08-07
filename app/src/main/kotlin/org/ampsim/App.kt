@@ -14,6 +14,7 @@ import org.ampsim.audio.AudioEngine
 import org.ampsim.chain.ChainManager
 import org.ampsim.events.EventBusImpl
 import org.ampsim.events.UIEvent
+import org.ampsim.events.audioStatusChanged
 import org.ampsim.events.chainModified
 import org.ampsim.events.parameterChanged
 import org.ampsim.events.presetLoaded
@@ -28,6 +29,8 @@ import org.ampsim.persistence.PresetRepository
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.ChainEditorModel
+import org.ampsim.ui.dashboard.DashboardView
+import org.ampsim.ui.dashboard.DashboardViewModel
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.library.LibraryViewModel
 import org.ampsim.ui.preset.PresetsView
@@ -72,6 +75,13 @@ class App {
     val presetsViewModel = PresetsViewModel(
         presetRepository,
         configManager.config.map { it.presets.recentPresets }
+    )
+    val dashboardViewModel = DashboardViewModel(
+        activePreset = chainManager.activePreset,
+        lastKnownPresetName = chainManager.lastKnownPresetName,
+        chain = chainManager.chain,
+        audioStatus = eventBus.audioStatusChanged().map { it.status },
+        recentPresets = presetsViewModel.recentPresets
     )
     private val autoSaveRepository: PresetRepository =
         FileSystemPresetRepository(FileSystemPresetRepository.getOrCreateAutoSaveDir())
@@ -141,8 +151,11 @@ class App {
 
     fun getAudioStatus() = audioEngine.getStatus()
 
-    /** Publish the audio engine's current status for anything subscribed to [eventBus]. */
-    fun publishAudioStatus() = eventBus.publish(UIEvent.AudioStatusChanged(audioEngine.getStatus()))
+    /** Refresh and publish the audio engine's current status for anything subscribed to [eventBus]. */
+    fun publishAudioStatus() {
+        audioEngine.updateStatus()
+        eventBus.publish(UIEvent.AudioStatusChanged(audioEngine.getStatus()))
+    }
 
     /** Mount the Chain Editor canvas into the window's editor page. */
     fun bindChainEditor(window: AppWindow) = window.bindChainEditor(
@@ -176,7 +189,10 @@ class App {
     fun setAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
 
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
-    fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving {
+    fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
+
+    /** Open the "Save Preset" dialog, pre-filled from the active preset (if any). Shared by the header button and the Dashboard's Save quick action. */
+    private fun openSavePresetDialog(window: AppWindow) {
         val current = chainManager.activePreset.value
         val dialog = SavePresetDialog(
             initialName = current?.metadata?.name ?: "",
@@ -201,24 +217,40 @@ class App {
         dialog.present(window)
     }
 
+    /** Load the preset named [name] and make it the active chain. Shared by the Presets tab and the Dashboard's recent-presets carousel. */
+    private fun loadPresetByName(name: String) {
+        uiCoroutineScope.launch {
+            val preset = presetRepository.load(name)
+            GLib.idleAdd(0) {
+                if (preset != null) {
+                    chainManager.loadPreset(preset)
+                } else {
+                    eventBus.publish(UIEvent.ErrorOccurred("Preset '$name' could not be loaded.", "PresetsView"))
+                }
+                false
+            }
+        }
+    }
+
+    /** Mount the Dashboard tab, wiring its quick actions to the same flows the header bar and Presets tab already use. */
+    fun bindDashboardView(window: AppWindow) = window.bindDashboardView(
+        DashboardView(
+            model = dashboardViewModel,
+            scope = uiCoroutineScope,
+            onNewRequested = { chainManager.newChain() },
+            onSaveRequested = { openSavePresetDialog(window) },
+            onLoadRequested = { window.showPage("presets") },
+            onSettingsRequested = { window.showPage("settings") },
+            onRecentPresetActivated = { name -> loadPresetByName(name) }
+        )
+    )
+
     /** Bind the Presets tab's search/filter/context-menu view, loading the clicked preset through [chainManager]. */
     fun bindPresetsView(window: AppWindow) = window.bindPresetsView(
         PresetsView(
             model = presetsViewModel,
             scope = uiCoroutineScope,
-            onLoadRequested = { name ->
-                uiCoroutineScope.launch {
-                    val preset = presetRepository.load(name)
-                    GLib.idleAdd(0) {
-                        if (preset != null) {
-                            chainManager.loadPreset(preset)
-                        } else {
-                            eventBus.publish(UIEvent.ErrorOccurred("Preset '$name' could not be loaded.", "PresetsView"))
-                        }
-                        false
-                    }
-                }
-            },
+            onLoadRequested = { name -> loadPresetByName(name) },
             onRenameRequested = { oldName, newName ->
                 uiCoroutineScope.launch {
                     val result = presetRepository.rename(oldName, newName)
@@ -319,6 +351,14 @@ fun main(args: Array<String>) {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+        val dashboardCssProvider = CssProvider()
+        dashboardCssProvider.loadFromResource("/org/ampsim/css/dashboard.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            dashboardCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         appInstance.bindAudioControls(mainWindow)
@@ -328,6 +368,7 @@ fun main(args: Array<String>) {
         appInstance.bindLibraryView(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
         appInstance.bindPresetsView(mainWindow)
+        appInstance.bindDashboardView(mainWindow)
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {

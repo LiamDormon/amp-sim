@@ -3,6 +3,7 @@ package org.ampsim.ui
 import java.lang.foreign.MemorySegment
 import org.gnome.adw.ApplicationWindow
 import org.gnome.adw.OverlaySplitView
+import org.gnome.adw.ViewStack
 import org.gnome.adw.ViewSwitcherSidebar
 import org.gnome.adw.WindowTitle
 import org.gnome.gtk.Box
@@ -17,6 +18,7 @@ import org.ampsim.audio.AudioEngine
 import org.ampsim.audio.NoiseGate
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.Dial
+import org.ampsim.ui.dashboard.DashboardView
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
 
@@ -73,6 +75,14 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "presets_host")
     @JvmField
     var presetsHost: Box? = null
+
+    @GtkChild(name = "dashboard_host")
+    @JvmField
+    var dashboardHost: Box? = null
+
+    @GtkChild(name = "content_stack")
+    @JvmField
+    var contentStack: ViewStack? = null
 
     private var inputDeviceSelectionGuard = false
     private var inputDeviceIds: List<String> = emptyList()
@@ -203,6 +213,16 @@ class AppWindow : ApplicationWindow {
     /** Mount the Library browser into the Chain Editor page's sidebar. */
     fun bindLibraryView(view: LibraryView) {
         libraryHost?.append(view)
+    }
+
+    /** Mount the Dashboard tab's view widget into its host container. */
+    fun bindDashboardView(view: DashboardView) {
+        dashboardHost?.append(view)
+    }
+
+    /** Switch the content ViewStack to the page named [name] (e.g. "presets", "settings"). */
+    fun showPage(name: String) {
+        contentStack?.visibleChildName = name
     }
 
     /** Show or hide the Library sidebar docked beside the Chain Editor canvas. */

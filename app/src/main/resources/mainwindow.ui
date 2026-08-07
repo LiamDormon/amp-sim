@@ -190,10 +190,10 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         <property name="starts-section">true</property>
                         <property name="section-title" translatable="yes">Main</property>
                         <property name="child">
-                          <object class="AdwStatusPage">
-                            <property name="title" translatable="yes">Dashboard</property>
-                            <property name="description" translatable="yes">Use the Chain Editor to build your signal chain.</property>
-                            <property name="icon-name">view-grid-symbolic</property>
+                          <object class="GtkBox" id="dashboard_host">
+                            <property name="orientation">1</property>
+                            <property name="vexpand">true</property>
+                            <property name="hexpand">true</property>
                           </object>
                         </property>
                       </object>

@@ -6,6 +6,7 @@
     <file>css/chain-editor.css</file>
     <file>css/presets.css</file>
     <file>css/library.css</file>
+    <file>css/dashboard.css</file>
   </gresource>
 </gresources>
 

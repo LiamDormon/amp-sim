@@ -1,0 +1,206 @@
+/* Dashboard tab — the rig's front panel.
+ *
+ * Follows the design system documented at the top of chain-editor.css: theme
+ * color with translucent overlays, @window_fg_color dimmed with alpha() for
+ * text, and the amber "live" accent reserved strictly for values that reflect
+ * live signal state (lit meter segments, the unsaved badge) — never for plain
+ * buttons or static labels, so the one accent still means something when it
+ * appears.
+ *
+ * Three zones, each doing one job, the same way a rack unit's front plate
+ * separates its nameplate from its control surface from its patch bay:
+ *
+ *   - NAMEPLATE   preset identity + at-a-glance rig state (name, dirty
+ *                 badge, unit count, JACK connection LED).
+ *   - INSTRUMENT  one recessed control-surface panel: the level meters,
+ *     PANEL       the CPU ladder, and the quick-action buttons together,
+ *                 the way a single hardware unit's face groups its meters
+ *                 and buttons rather than scattering them in cards.
+ *   - PATCH BAY   recent presets in a recessed well, cable-jack style,
+ *                 scrolling horizontally instead of paging — a handful of
+ *                 slots, not a slideshow.
+ *
+ * The segmented LED-ladder meter (.dashboard-vu-meter-ladder) is this tab's
+ * one deliberate signature: reused for input, output and CPU alike so the
+ * whole panel reads as one instrument rather than three different widgets.
+ */
+
+@define-color amp_accent #e8a251;
+@define-color led_green #3ddc72;
+@define-color led_red #f2555a;
+
+.dashboard-view {
+  background-color: @window_bg_color;
+}
+
+/* ── Zone 1: Nameplate ───────────────────────────────────────────────────── */
+
+.dashboard-nameplate {
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid alpha(@window_fg_color, 0.12);
+}
+
+.dashboard-nameplate-name {
+  font-size: 1.6em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: @window_fg_color;
+}
+
+.dashboard-nameplate-subtitle {
+  font-size: 0.8125em;
+  color: alpha(@window_fg_color, 0.55);
+}
+
+.dashboard-dirty-badge {
+  font-size: 0.6875em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1a1005;
+  background-color: @amp_accent;
+  padding: 0.1875em 0.5em;
+  border-radius: 999px;
+}
+
+.dashboard-jack-indicator {
+  padding: 0.375em 0.75em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 999px;
+}
+
+.dashboard-jack-status {
+  font-size: 0.8125em;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.85);
+}
+
+/* LED dot: unlit is a dark recess; lit glows in its status color, matching
+ * how a physical indicator LED looks illuminated versus dark. */
+.dashboard-led {
+  min-width: 0.625em;
+  min-height: 0.625em;
+  border-radius: 999px;
+  background-color: alpha(#000, 0.4);
+}
+
+.dashboard-led--on {
+  background-color: @led_green;
+  box-shadow: 0 0 0.5em 0.0625em alpha(@led_green, 0.75);
+}
+
+.dashboard-led--off {
+  background-color: @led_red;
+  box-shadow: 0 0 0.375em 0.0625em alpha(@led_red, 0.55);
+}
+
+/* ── Zone 2: Instrument panel ────────────────────────────────────────────── */
+
+/* The recessed cavity, same treatment as library.css's list well — this is
+ * the rig's control surface, so it gets the same "routed into the chassis"
+ * language as every other control cluster in the app. */
+.dashboard-instrument-panel {
+  padding: 1em 1.125em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.625em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+.dashboard-meters-group {
+  padding-right: 1em;
+  border-right: 1px solid alpha(@window_fg_color, 0.1);
+}
+
+.dashboard-cpu-group {
+  padding-right: 1em;
+  border-right: 1px solid alpha(@window_fg_color, 0.1);
+  /* Lets the CPU group shrink below its children's natural width before the
+   * whole panel does — the ladder's own min-width (below) is the real floor. */
+  min-width: 0;
+}
+
+.dashboard-cpu-value {
+  font-size: 0.8125em;
+  font-weight: 700;
+  color: @window_fg_color;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}
+
+/* ── LED ladder meters ───────────────────────────────────────────────────── */
+
+.dashboard-vu-meter-label {
+  font-size: 0.6875em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: alpha(@window_fg_color, 0.5);
+}
+
+.dashboard-vu-meter--vertical .dashboard-vu-meter-ladder {
+  min-width: 1.5em;
+  min-height: 9em;
+}
+
+.dashboard-vu-meter--horizontal .dashboard-vu-meter-ladder {
+  min-width: 5em;
+  min-height: 1.375em;
+}
+
+/* ── Quick actions ───────────────────────────────────────────────────────── */
+
+/* Uniform, tactile push-buttons — like a rack unit's footswitches, all the
+ * same physical part. Hierarchy comes from icon + order, not color: amber
+ * stays reserved for live-signal state, not for a "primary" button. */
+.dashboard-action-button {
+  padding: 0.4em 0.75em;
+  font-weight: 600;
+}
+
+/* ── Zone 3: Patch bay ───────────────────────────────────────────────────── */
+
+.dashboard-patch-bay-well {
+  padding: 0.625em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.625em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+.dashboard-patch-bay-row {
+  min-height: 3.75em;
+}
+
+.dashboard-patch-card {
+  min-width: 9em;
+  padding: 0.625em 0.75em;
+  background-color: alpha(@window_fg_color, 0.06);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 0.5em;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.dashboard-patch-card:hover {
+  background-color: alpha(@amp_accent, 0.12);
+  border-color: alpha(@amp_accent, 0.5);
+}
+
+.dashboard-patch-card-name {
+  font-size: 0.9375em;
+  font-weight: 600;
+  color: @window_fg_color;
+}
+
+.dashboard-patch-card-time {
+  font-size: 0.75em;
+  color: alpha(@window_fg_color, 0.55);
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}
+
+.dashboard-patch-bay-empty {
+  padding: 0.75em;
+  color: alpha(@window_fg_color, 0.5);
+  font-size: 0.875em;
+}

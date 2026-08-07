@@ -185,4 +185,63 @@ class ChainManagerTest {
         assertEquals(Chain(listOf(unit1)), manager.chain.value)
         assertEquals(emptyList<UIEvent>(), bus.published)
     }
+
+    @Test
+    fun loadPresetSetsLastKnownPresetName() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus)
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+
+        assertEquals(null, manager.lastKnownPresetName.value)
+        manager.loadPreset(preset)
+        assertEquals("My Preset", manager.lastKnownPresetName.value)
+    }
+
+    @Test
+    fun markSavedSetsLastKnownPresetName() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1)))
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+
+        manager.markSaved(preset)
+
+        assertEquals("My Preset", manager.lastKnownPresetName.value)
+    }
+
+    @Test
+    fun lastKnownPresetNameSurvivesAMutationThatClearsActivePreset() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1)))
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+
+        manager.loadPreset(preset)
+        manager.addUnit(unit2)
+
+        assertEquals(null, manager.activePreset.value)
+        assertEquals("My Preset", manager.lastKnownPresetName.value)
+    }
+
+    @Test
+    fun newChainResetsChainAndClearsActivePresetAndLastKnownName() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1)))
+        val preset = Preset.create(name = "My Preset", effectUnits = listOf(unit1))
+        manager.loadPreset(preset)
+
+        manager.newChain()
+
+        assertEquals(Chain(), manager.chain.value)
+        assertEquals(null, manager.activePreset.value)
+        assertEquals(null, manager.lastKnownPresetName.value)
+    }
+
+    @Test
+    fun newChainPublishesChainModified() {
+        val bus = RecordingEventBus()
+        val manager = ChainManager(bus, initialChain = Chain(listOf(unit1)))
+
+        manager.newChain()
+
+        assertEquals(listOf<UIEvent>(UIEvent.ChainModified(Chain())), bus.published)
+    }
 }

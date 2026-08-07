@@ -33,6 +33,15 @@ class ChainManager(
     private val _activePreset = MutableStateFlow<Preset?>(null)
     val activePreset: StateFlow<Preset?> = _activePreset.asStateFlow()
 
+    /**
+     * The name of the last preset [chain] was loaded from or saved as, kept even
+     * after [activePreset] goes back to `null` on a subsequent edit. Lets a "dirty"
+     * indicator keep showing "SomeName" (with an unsaved marker) instead of falling
+     * back to an untitled state the instant a saved preset is tweaked.
+     */
+    private val _lastKnownPresetName = MutableStateFlow<String?>(null)
+    val lastKnownPresetName: StateFlow<String?> = _lastKnownPresetName.asStateFlow()
+
     /** Insert [unit] at [index] (default: append). Publishes [UIEvent.ErrorOccurred] instead of throwing on an invalid index. */
     fun addUnit(unit: EffectUnit, index: Int = _chain.value.effectUnits.size) {
         val updated = runCatching { _chain.value.addUnit(unit, index) }
@@ -51,6 +60,21 @@ class ChainManager(
         _chain.value = newChain
         _activePreset.value = null
         eventBus.publish(UIEvent.ChainModified(newChain))
+    }
+
+    /**
+     * Start a brand-new, empty chain with no associated preset. Distinct from
+     * [setChain], which replaces the chain's contents but is used for
+     * canvas-driven full-chain replacement (e.g. drag-drop reorder) where the
+     * caller isn't expressing "the user asked to start fresh". Also clears
+     * [lastKnownPresetName], so a display derived from it falls all the way
+     * back to an untitled state — there's nothing to be dirty relative to.
+     */
+    fun newChain() {
+        _chain.value = Chain()
+        _activePreset.value = null
+        _lastKnownPresetName.value = null
+        eventBus.publish(UIEvent.ChainModified(_chain.value))
     }
 
     fun removeUnit(unitId: String) {
@@ -96,6 +120,7 @@ class ChainManager(
     fun loadPreset(preset: Preset) {
         _chain.value = preset.chain
         _activePreset.value = preset
+        _lastKnownPresetName.value = preset.metadata.name
         eventBus.publish(UIEvent.PresetLoaded(preset))
     }
 
@@ -107,6 +132,7 @@ class ChainManager(
      */
     fun markSaved(preset: Preset) {
         _activePreset.value = preset
+        _lastKnownPresetName.value = preset.metadata.name
     }
 
     companion object {

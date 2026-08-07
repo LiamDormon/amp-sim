@@ -42,11 +42,17 @@ class AudioEngine : JackClient.AudioProcessor {
 
     @Volatile private var inputLevel = 0f
     @Volatile private var outputLevel = 0f
+    @Volatile private var cpuLoadEstimate = 0f
 
     // ---- Real-time thread owned state (only touched inside process()) -------
 
     private var activeChain: List<DSPModule> = emptyList()
     private var rtPlaybackEnabled = true
+
+    // Sample rate cached once in start() (before the RT thread can be calling
+    // process()) so the real-time callback never has to call
+    // jackClient.getSampleRate() (a JNA native call) per block.
+    private var cachedSampleRateHz: Int = org.ampsim.dsp.BaseDSPModule.DEFAULT_SAMPLE_RATE
 
     // Built-in input gate, applied ahead of the DSP chain (see process()). Not
     // an insertable DSPModule: a program feature toggled from the sidebar.
@@ -182,6 +188,14 @@ class AudioEngine : JackClient.AudioProcessor {
     /** Number of active DSP modules in the current chain. */
     fun getActiveModuleCount(): Int = activeChain.size
 
+    /**
+     * Fraction of the real-time budget spent processing the last block, self-measured
+     * (via wall-clock timing in [process]) since JACK's own CPU load figure isn't
+     * reachable through the JNAJack wrapper this app uses. Clamped to `[0, 1]`, so
+     * `1.0` means "at or over budget", not literally exactly at it.
+     */
+    fun getCpuLoad(): Float = cpuLoadEstimate
+
     /** Number of commands dropped because the queue was full. */
     fun getDroppedCommandCount(): Long = droppedCommands.get()
 
@@ -201,6 +215,7 @@ class AudioEngine : JackClient.AudioProcessor {
             jackClient.activate()
 
             noiseGate.sampleRate = currentSampleRate()
+            cachedSampleRateHz = currentSampleRate()
 
             updateStatus()
             applyRouting()
@@ -235,6 +250,8 @@ class AudioEngine : JackClient.AudioProcessor {
             for (i in 0 until framesToClear) output.put(i, 0f)
             return
         }
+
+        val processingStartNanos = System.nanoTime()
 
         // Gate the raw input ahead of the chain (and its metering), so a
         // closed gate also silences whatever the chain would otherwise be fed,
@@ -340,6 +357,10 @@ class AudioEngine : JackClient.AudioProcessor {
         }
         outputLevel = kotlin.math.sqrt(outputSumSquares / framesToCopy)
 
+        val elapsedNanos = System.nanoTime() - processingStartNanos
+        val budgetNanos = framesToCopy.toDouble() / cachedSampleRateHz * 1_000_000_000.0
+        cpuLoadEstimate = (elapsedNanos / budgetNanos).toFloat().coerceIn(0f, 1f)
+
         // Clear any frames beyond what we produced.
         val framesToClear = minOf(nframes, output.capacity())
         for (i in framesToCopy until framesToClear) {
@@ -409,7 +430,7 @@ class AudioEngine : JackClient.AudioProcessor {
             isConnected = jackClient.isConnected(),
             sampleRate = jackClient.getSampleRate(),
             bufferSize = jackClient.getBufferSize(),
-            cpuLoad = jackClient.getCpuLoad(),
+            cpuLoad = getCpuLoad(),
             clientName = CLIENT_NAME,
             lastError = status.lastError,
             inputLevel = inputLevel,
