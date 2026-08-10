@@ -5,10 +5,50 @@ package org.ampsim
 
 import kotlin.test.Test
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import org.ampsim.model.EffectUnit
 
 class AppTest {
     @Test fun appCanBeInstantiated() {
         val classUnderTest = App()
         assertNotNull(classUnderTest, "app should be instantiatable")
+    }
+
+    /**
+     * Regression test: App.undo()/redo() call ChainManager.undo()/redo()
+     * directly (bypassing ChainEditorModel's own add/remove/move/etc.
+     * wrappers, which are what normally trigger the Chain Editor canvas's
+     * synchronous re-render — see ChainEditorModel's addListener doc
+     * comment). Without App also calling notifyExternalChange(), the audio
+     * engine reverts correctly (it listens to ChainManager's UIEventBus) but
+     * the canvas's dials/switches silently stay stale.
+     */
+    @Test
+    fun undoNotifiesTheChainEditorCanvasNotJustTheAudioEngine() {
+        val app = App()
+        val unit = EffectUnit(id = "test-unit", type = "overdrive", model = "generic")
+        app.chainManager.addUnit(unit) // bypasses ChainEditorModel, same as App.undo()'s own undo() call does
+
+        var wasNotified = false
+        app.chainEditorModel.addListener { wasNotified = true }
+        app.undo()
+
+        assertTrue(wasNotified, "canvas listener should have fired so dials/switches refresh, not just the audio engine")
+        assertTrue(app.chainEditorModel.chain.value.effectUnits.none { it.id == "test-unit" })
+    }
+
+    @Test
+    fun redoNotifiesTheChainEditorCanvasNotJustTheAudioEngine() {
+        val app = App()
+        val unit = EffectUnit(id = "test-unit", type = "overdrive", model = "generic")
+        app.chainManager.addUnit(unit)
+        app.undo()
+
+        var wasNotified = false
+        app.chainEditorModel.addListener { wasNotified = true }
+        app.redo()
+
+        assertTrue(wasNotified, "canvas listener should have fired so dials/switches refresh, not just the audio engine")
+        assertTrue(app.chainEditorModel.chain.value.effectUnits.any { it.id == "test-unit" })
     }
 }

@@ -33,6 +33,7 @@ fun buildShortcutsWindow(): ShortcutsWindow {
         addShortcut(shortcut("Load Preset", "<Primary>l"))
         addShortcut(shortcut("New Chain", "<Primary>n"))
         addShortcut(shortcut("Undo", "<Primary>z"))
+        addShortcut(shortcut("Redo", "<Primary><Shift>z"))
     }
     val chainEditor = ShortcutsGroup.builder().setTitle("Chain Editor").build().apply {
         // Tab to a unit's dial first (e.g. drive/tone/level under its

@@ -27,7 +27,7 @@ class AppWindowActionsTest {
 
     private fun noopHandlers() = AppWindowActionHandlers(
         showDashboard = {}, showChainEditor = {}, showPresets = {}, showSettings = {},
-        toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}
+        toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
     )
 
     @Test
@@ -38,7 +38,7 @@ class AppWindowActionsTest {
         assertEquals(
             setOf(
                 "show-dashboard", "show-chain-editor", "show-presets", "show-settings",
-                "toggle-library", "save", "load", "new-chain", "undo"
+                "toggle-library", "save", "load", "new-chain", "undo", "redo"
             ),
             actions.keys
         )
@@ -52,7 +52,7 @@ class AppWindowActionsTest {
             AppWindowActionHandlers(
                 showDashboard = { invoked = true },
                 showChainEditor = {}, showPresets = {}, showSettings = {},
-                toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}
+                toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
         )
 
@@ -68,7 +68,7 @@ class AppWindowActionsTest {
             AppWindowActionHandlers(
                 showDashboard = { window.showPage("dashboard") },
                 showChainEditor = { window.showPage("editor") },
-                showPresets = {}, showSettings = {}, toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}
+                showPresets = {}, showSettings = {}, toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
         )
 
@@ -84,7 +84,7 @@ class AppWindowActionsTest {
             AppWindowActionHandlers(
                 showDashboard = {}, showChainEditor = {}, showPresets = {}, showSettings = {},
                 toggleLibrary = { window.toggleLibraryPanel() },
-                save = {}, load = {}, newChain = {}, undo = {}
+                save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
         )
         assertFalse(window.isLibraryPanelVisible())
@@ -95,13 +95,37 @@ class AppWindowActionsTest {
     }
 
     @Test
-    fun undoActionIsRegisteredAndTriggerableWithoutThrowing() {
-        // Stub only — no undo history exists yet. This just proves Ctrl+Z has
-        // somewhere to go rather than feeling unbound.
+    fun undoActionInvokesItsHandler() {
         val window = AppWindow()
-        val actions = window.registerWindowActions(noopHandlers())
+        var invoked = false
+        val actions = window.registerWindowActions(
+            AppWindowActionHandlers(
+                showDashboard = {}, showChainEditor = {}, showPresets = {}, showSettings = {},
+                toggleLibrary = {}, save = {}, load = {}, newChain = {},
+                undo = { invoked = true }, redo = {}
+            )
+        )
 
         actions.getValue("undo").emitActivate(null)
+
+        assertTrue(invoked)
+    }
+
+    @Test
+    fun redoActionInvokesItsHandler() {
+        val window = AppWindow()
+        var invoked = false
+        val actions = window.registerWindowActions(
+            AppWindowActionHandlers(
+                showDashboard = {}, showChainEditor = {}, showPresets = {}, showSettings = {},
+                toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {},
+                redo = { invoked = true }
+            )
+        )
+
+        actions.getValue("redo").emitActivate(null)
+
+        assertTrue(invoked)
     }
 
     companion object {
