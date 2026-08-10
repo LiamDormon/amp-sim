@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.ampsim.model.AppConfiguration
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.time.Clock
 
 class ConfigManager(
@@ -67,7 +69,20 @@ class ConfigManager(
 
         try {
             configFile.parentFile?.mkdirs()
-            configFile.writeText(json.encodeToString(AppConfiguration.serializer(), newConfig))
+            // Write to a sibling temp file, then atomically rename it over the
+            // real config file, rather than writeText()-ing configFile in
+            // place: an in-place write leaves a window where a concurrent
+            // reader (or a crash mid-write) sees a truncated/partial file.
+            // The temp file must share configFile's directory so the rename
+            // stays on one filesystem, which is what makes it atomic.
+            val tempFile = File(configFile.parentFile, "${configFile.name}.tmp")
+            tempFile.writeText(json.encodeToString(AppConfiguration.serializer(), newConfig))
+            Files.move(
+                tempFile.toPath(),
+                configFile.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
         } catch (e: Exception) {
             System.err.println("Failed to save config: ${e.message}")
         }

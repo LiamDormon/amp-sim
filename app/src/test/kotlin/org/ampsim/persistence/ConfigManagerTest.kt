@@ -114,6 +114,41 @@ class ConfigManagerTest {
     }
 
     @Test
+    fun settingsFieldUpdatesTriggerPersistence() = runBlocking {
+        manager = ConfigManager(configFile)
+
+        waitFor("initial config to be written") {
+            configFile.exists() && configFile.length() > 0
+        }
+
+        manager.updateConfig { current ->
+            current.copy(
+                audio = current.audio.copy(outputDeviceId = "system:playback_2", backend = "jack"),
+                advanced = current.advanced.copy(
+                    enableCPUMonitoring = true,
+                    latencyCompensation = true,
+                    autoSaveIntervalSeconds = 90
+                )
+            )
+        }
+
+        waitFor("updated settings fields to be persisted") {
+            val saved = readSavedConfig()
+            saved.audio.outputDeviceId == "system:playback_2" &&
+                saved.audio.backend == "jack" &&
+                saved.advanced.enableCPUMonitoring &&
+                saved.advanced.latencyCompensation &&
+                saved.advanced.autoSaveIntervalSeconds == 90
+        }
+
+        assertEquals("system:playback_2", manager.config.value.audio.outputDeviceId)
+        assertEquals("jack", manager.config.value.audio.backend)
+        assertEquals(true, manager.config.value.advanced.enableCPUMonitoring)
+        assertEquals(true, manager.config.value.advanced.latencyCompensation)
+        assertEquals(90, manager.config.value.advanced.autoSaveIntervalSeconds)
+    }
+
+    @Test
     fun concurrentUpdateSafety() = runBlocking {
         manager = ConfigManager(configFile)
 

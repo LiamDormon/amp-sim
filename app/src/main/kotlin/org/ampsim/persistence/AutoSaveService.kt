@@ -23,7 +23,7 @@ import org.ampsim.model.Preset
 class AutoSaveService(
     private val chainManager: ChainManager,
     private val autoSaveRepository: PresetRepository,
-    private val interval: Duration
+    private val interval: () -> Duration
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var lastSaved: Chain? = null
@@ -31,7 +31,7 @@ class AutoSaveService(
     fun start() {
         scope.launch {
             while (isActive) {
-                delay(interval)
+                delay(interval())
                 val chain = chainManager.chain.value
                 if (!chain.isEmpty() && chain != lastSaved) {
                     autoSaveRepository.save(Preset.create(name = AUTOSAVE_PRESET_NAME, effectUnits = chain.effectUnits))

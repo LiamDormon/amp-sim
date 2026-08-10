@@ -24,9 +24,7 @@ import org.ampsim.model.Chain
  * Metering (input/output RMS) is published through `@Volatile` fields, so the UI
  * can read levels without any lock contention with the audio thread.
  */
-class AudioEngine : JackClient.AudioProcessor {
-
-    private val jackClient = JackClient(CLIENT_NAME)
+class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME)) : JackClient.AudioProcessor {
 
     @Volatile
     private var status = AudioStatus()
@@ -37,6 +35,7 @@ class AudioEngine : JackClient.AudioProcessor {
     private val droppedCommands = AtomicLong(0)
 
     @Volatile private var inputDeviceId: String? = null
+    @Volatile private var outputDeviceId: String? = null
 
     // ---- Metering (audio thread -> control threads) -------------------------
 
@@ -46,7 +45,7 @@ class AudioEngine : JackClient.AudioProcessor {
 
     // ---- Real-time thread owned state (only touched inside process()) -------
 
-    private var activeChain: List<DSPModule> = emptyList()
+    @Volatile private var activeChain: List<DSPModule> = emptyList()
     private var rtPlaybackEnabled = true
 
     // Sample rate cached once in start() (before the RT thread can be calling
@@ -168,6 +167,19 @@ class AudioEngine : JackClient.AudioProcessor {
 
     fun getInputDevice(): String? = inputDeviceId
 
+    /**
+     * Select the JACK destination port for the app's output. Unlike
+     * [setInputDevice], this only takes effect after [restart]: JACK only
+     * auto-connects a freshly opened client's output port once (see
+     * [JackClient.routeAudio]'s "connect only if nothing is already
+     * connected" guard), so re-routing a live client's output has no effect.
+     */
+    fun setOutputDevice(deviceId: String?) {
+        outputDeviceId = deviceId?.takeIf { it.isNotBlank() }
+    }
+
+    fun getOutputDevice(): String? = outputDeviceId
+
     fun getAvailableInputDevices(): List<String> = jackClient.availableInputSources()
 
     fun getAvailableOutputDevices(): List<String> = jackClient.availableOutputDestinations()
@@ -230,6 +242,20 @@ class AudioEngine : JackClient.AudioProcessor {
         jackClient.close()
         status = AudioStatus()
         logger.info("Audio engine stopped")
+    }
+
+    /**
+     * Stop and reopen the underlying JACK client, then re-apply whatever DSP
+     * chain was active. Needed for changes JACK only accepts at client-open
+     * time — currently just an output device selection (see
+     * [setOutputDevice]) — never for sample rate/buffer size, which are
+     * server-wide and can't be changed by this app regardless of restart.
+     */
+    fun restart() {
+        val chainSnapshot = activeChain
+        stop()
+        start()
+        loadModules(chainSnapshot)
     }
 
     // -------------------------------------------------------------------------
@@ -442,7 +468,7 @@ class AudioEngine : JackClient.AudioProcessor {
 
     private fun applyRouting() {
         if (jackClient.isConnected()) {
-            jackClient.routeAudio(inputDeviceId)
+            jackClient.routeAudio(inputDeviceId, outputDeviceId)
         }
     }
 

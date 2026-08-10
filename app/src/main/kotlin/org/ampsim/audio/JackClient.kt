@@ -4,7 +4,7 @@ import org.jaudiolibs.jnajack.*
 import java.nio.FloatBuffer
 import java.util.*
 
-class JackClient(private val clientName: String = "AmpSim") {
+class JackClient(private val clientName: String = "AmpSim") : AudioClient {
     private var client: org.jaudiolibs.jnajack.JackClient? = null
     private var inputPort: JackPort? = null
     private var outputPort: JackPort? = null
@@ -13,9 +13,9 @@ class JackClient(private val clientName: String = "AmpSim") {
         fun process(input: FloatBuffer, output: FloatBuffer, nframes: Int)
     }
 
-    var processor: AudioProcessor? = null
+    override var processor: AudioProcessor? = null
 
-    fun open(autoStart: Boolean = false) {
+    override fun open(autoStart: Boolean) {
         val jack = Jack.getInstance()
         val options = if (autoStart) {
             EnumSet.noneOf(JackOptions::class.java)
@@ -57,11 +57,11 @@ class JackClient(private val clientName: String = "AmpSim") {
         }
     }
 
-    fun activate() {
+    override fun activate() {
         client?.activate()
     }
 
-    fun availableInputSources(): List<String> = try {
+    override fun availableInputSources(): List<String> = try {
         val currentClient = client ?: return emptyList()
         Jack.getInstance()
             .getPorts(currentClient, null, JackPortType.AUDIO, EnumSet.of(JackPortFlags.JackPortIsOutput))
@@ -70,7 +70,7 @@ class JackClient(private val clientName: String = "AmpSim") {
         emptyList()
     }
 
-    fun availableOutputDestinations(): List<String> = try {
+    override fun availableOutputDestinations(): List<String> = try {
         val currentClient = client ?: return emptyList()
         Jack.getInstance()
             .getPorts(currentClient, null, JackPortType.AUDIO, EnumSet.of(JackPortFlags.JackPortIsInput))
@@ -122,7 +122,7 @@ class JackClient(private val clientName: String = "AmpSim") {
         emptyList()
     }
 
-    fun routeAudio(inputSourcePort: String? = null) {
+    override fun routeAudio(inputSourcePort: String?, outputDestinationPort: String?) {
         client ?: return
         val jack = Jack.getInstance()
         val inputName = inputPort?.name ?: return
@@ -155,7 +155,13 @@ class JackClient(private val clientName: String = "AmpSim") {
 
         val existingOutputConnections = outputPort?.getConnections().orEmpty()
         if (existingOutputConnections.isEmpty()) {
-            outputDestinationsForRouting().forEach { destination ->
+            val outputDestinations = availableOutputDestinations()
+            val destinations = when {
+                outputDestinationPort != null && outputDestinations.contains(outputDestinationPort) ->
+                    listOf(outputDestinationPort)
+                else -> outputDestinationsForRouting()
+            }
+            destinations.forEach { destination ->
                 runCatching {
                     jack.connect(outputName, destination)
                 }
@@ -181,16 +187,16 @@ class JackClient(private val clientName: String = "AmpSim") {
         return destinations
     }
 
-    fun close() {
+    override fun close() {
         client?.deactivate()
         client?.close()
         client = null
     }
 
-    fun getSampleRate(): Int = client?.sampleRate ?: 0
-    fun getBufferSize(): Int = client?.bufferSize ?: 0
+    override fun getSampleRate(): Int = client?.sampleRate ?: 0
+    override fun getBufferSize(): Int = client?.bufferSize ?: 0
     fun getCpuLoad(): Float = 0.0f
-    fun isConnected(): Boolean = client != null
+    override fun isConnected(): Boolean = client != null
 
     companion object {
         init {

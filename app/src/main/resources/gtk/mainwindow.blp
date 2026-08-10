@@ -244,29 +244,10 @@ template $AppWindow: Adw.ApplicationWindow {
             starts-section: true;
             section-title: _("System");
 
-            child: Gtk.Box {
+            child: Gtk.Box settings_host {
               orientation: vertical;
-              spacing: 12;
-              margin-top: 18;
-              margin-bottom: 18;
-              margin-start: 18;
-              margin-end: 18;
-
-              Gtk.Label {
-                label: _("Audio Input");
-                xalign: 0;
-                styles [ "heading" ]
-              }
-
-              Gtk.Label {
-                label: _("Choose which JACK source should feed the amp input. If nothing is selected, the first available source will be used.");
-                wrap: true;
-                xalign: 0;
-              }
-
-              Gtk.DropDown input_device_combo {
-                hexpand: true;
-              }
+              vexpand: true;
+              hexpand: true;
             };
           }
         };

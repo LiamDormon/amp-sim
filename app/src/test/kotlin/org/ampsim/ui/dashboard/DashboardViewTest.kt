@@ -32,7 +32,8 @@ class DashboardViewTest {
         lastKnownPresetName = MutableStateFlow<String?>(null),
         chain = MutableStateFlow(Chain()),
         audioStatus = MutableStateFlow(AudioStatus()),
-        recentPresets = MutableStateFlow(emptyList())
+        recentPresets = MutableStateFlow(emptyList()),
+        enableCPUMonitoring = MutableStateFlow(true)
     )
 
     private fun buildView(
@@ -62,8 +63,9 @@ class DashboardViewTest {
         cpuLoadPercent: Int = 0,
         isJackConnected: Boolean = false,
         inputLevel: Float = 0f,
-        outputLevel: Float = 0f
-    ) = DashboardState(presetDisplayName, isDirty, activeUnitCount, cpuLoadPercent, isJackConnected, inputLevel, outputLevel)
+        outputLevel: Float = 0f,
+        showCpuMeter: Boolean = true
+    ) = DashboardState(presetDisplayName, isDirty, activeUnitCount, cpuLoadPercent, isJackConnected, inputLevel, outputLevel, showCpuMeter)
 
     // ── Nameplate ───────────────────────────────────────────────────────────
 
@@ -111,6 +113,22 @@ class DashboardViewTest {
         assertEquals(0.3f, view.inputMeterWidget().currentLevel())
         assertEquals(0.6f, view.outputMeterWidget().currentLevel())
         assertEquals(0.5f, view.cpuMeterWidget().currentLevel())
+    }
+
+    @Test
+    fun hidesCpuMeterWhenCpuMonitoringIsDisabled() {
+        val view = buildView()
+        view.renderStateForTest(defaultState(showCpuMeter = false))
+
+        assertFalse(view.isCpuMeterVisible())
+    }
+
+    @Test
+    fun showsCpuMeterWhenCpuMonitoringIsEnabled() {
+        val view = buildView()
+        view.renderStateForTest(defaultState(showCpuMeter = true))
+
+        assertTrue(view.isCpuMeterVisible())
     }
 
     // ── Quick action buttons ───────────────────────────────────────────────

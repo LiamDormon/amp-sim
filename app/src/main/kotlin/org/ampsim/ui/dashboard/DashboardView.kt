@@ -65,6 +65,11 @@ class DashboardView(
     private val outputMeter = VuMeter("OUT")
     private val cpuMeter = VuMeter("CPU", MeterOrientation.HORIZONTAL, segmentCount = 16)
     private val cpuValueLabel = Label("").apply { addCssClass("dashboard-cpu-value") }
+    private val cpuGroup = Box(Orientation.VERTICAL, 4).apply {
+        addCssClass("dashboard-cpu-group")
+        valign = Align.CENTER
+        hexpand = true
+    }
 
     private val newButton = actionButton("document-new-symbolic", "New")
     private val saveButton = actionButton("document-save-symbolic", "Save")
@@ -149,11 +154,6 @@ class DashboardView(
         metersGroup.append(inputMeter)
         metersGroup.append(outputMeter)
 
-        val cpuGroup = Box(Orientation.VERTICAL, 4).apply {
-            addCssClass("dashboard-cpu-group")
-            valign = Align.CENTER
-            hexpand = true
-        }
         val cpuHeader = Box(Orientation.HORIZONTAL, 6)
         val cpuTitle = Label("CPU LOAD").apply { addCssClass("amp-legend") }
         cpuTitle.hexpand = true
@@ -219,6 +219,7 @@ class DashboardView(
             else -> "${state.activeUnitCount} active units"
         }
 
+        cpuGroup.visible = state.showCpuMeter
         cpuValueLabel.text = "${state.cpuLoadPercent}%"
         cpuMeter.setLevel(state.cpuLoadPercent / 100f)
 
@@ -289,6 +290,7 @@ class DashboardView(
     internal fun inputMeterWidget(): VuMeter = inputMeter
     internal fun outputMeterWidget(): VuMeter = outputMeter
     internal fun cpuMeterWidget(): VuMeter = cpuMeter
+    internal fun isCpuMeterVisible(): Boolean = cpuGroup.visible
     internal fun patchCardCount(): Int = patchCards.size
     internal fun isPatchBayEmptyMessageVisible(): Boolean = patchBayEmptyLabel.parent != null
     internal fun patchCardNameText(index: Int): String = (patchCards[index].firstChild as Label).text
