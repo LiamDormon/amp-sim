@@ -29,6 +29,11 @@
 @define-color led_green #3ddc72;
 @define-color led_red #f2555a;
 
+/* Named so it's a documented token rather than bare magic hex — specifically
+ * tuned for contrast against @amp_accent, so not a semantic libadwaita
+ * mapping, just an honest name for a theme/high-contrast audit to find. */
+@define-color amp_accent_fg #1a1005;
+
 .dashboard-view {
   background-color: @window_bg_color;
 }
@@ -57,7 +62,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #1a1005;
+  color: @amp_accent_fg;
   background-color: @amp_accent;
   padding: 0.1875em 0.5em;
   border-radius: 999px;

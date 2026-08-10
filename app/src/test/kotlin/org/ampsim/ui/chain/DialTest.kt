@@ -6,13 +6,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.gnome.gdk.Gdk
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.Gtk
+import org.gnome.gtk.Widget
 
 class DialTest {
 
     @BeforeTest
     fun ensureGtkIsInitialized() {
         Gtk.init()
+    }
+
+    private fun controllersOf(widget: Widget): List<Any> {
+        val models = widget.observeControllers()
+        return (0 until models.nItems).mapNotNull { models.getItem(it) }
     }
 
     @Test
@@ -91,6 +99,55 @@ class DialTest {
         dial.applyDrag(-25.0)
 
         assertTrue(dial.value < afterFirstDrag)
+    }
+
+    // ── Keyboard adjustment ─────────────────────────────────────────────────
+
+    @Test
+    fun keyboardUpArrowIncreasesValueLikeScrollUp() {
+        val dial = Dial(min = 0f, max = 100f, initialValue = 50f)
+        val controller = controllersOf(dial.knobForTest()).filterIsInstance<EventControllerKey>().single()
+
+        controller.emitKeyPressed(Gdk.KEY_Up, 0, emptySet())
+
+        assertTrue(dial.value > 50f)
+    }
+
+    @Test
+    fun keyboardRightArrowIncreasesValue() {
+        val dial = Dial(min = 0f, max = 100f, initialValue = 50f)
+        val controller = controllersOf(dial.knobForTest()).filterIsInstance<EventControllerKey>().single()
+
+        controller.emitKeyPressed(Gdk.KEY_Right, 0, emptySet())
+
+        assertTrue(dial.value > 50f)
+    }
+
+    @Test
+    fun keyboardDownArrowDecreasesValue() {
+        val dial = Dial(min = 0f, max = 100f, initialValue = 50f)
+        val controller = controllersOf(dial.knobForTest()).filterIsInstance<EventControllerKey>().single()
+
+        controller.emitKeyPressed(Gdk.KEY_Down, 0, emptySet())
+
+        assertTrue(dial.value < 50f)
+    }
+
+    @Test
+    fun keyboardLeftArrowDecreasesValue() {
+        val dial = Dial(min = 0f, max = 100f, initialValue = 50f)
+        val controller = controllersOf(dial.knobForTest()).filterIsInstance<EventControllerKey>().single()
+
+        controller.emitKeyPressed(Gdk.KEY_Left, 0, emptySet())
+
+        assertTrue(dial.value < 50f)
+    }
+
+    @Test
+    fun theKnobIsFocusableForKeyboardOperation() {
+        val dial = Dial(min = 0f, max = 100f, initialValue = 50f)
+
+        assertTrue(dial.knobForTest().focusable)
     }
 
     @Test

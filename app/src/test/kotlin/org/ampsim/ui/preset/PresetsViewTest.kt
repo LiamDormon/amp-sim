@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.ampsim.model.Preset
 import org.ampsim.persistence.PresetRepository
 import org.ampsim.persistence.PresetSummary
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.GestureClick
 import org.gnome.gtk.Gtk
 import org.gnome.gtk.Widget
@@ -189,6 +190,22 @@ class PresetsViewTest {
         val gestures = (0 until models.nItems).mapNotNull { models.getItem(it) }.filterIsInstance<GestureClick>()
 
         assertTrue(gestures.any { it.button == SECONDARY_MOUSE_BUTTON })
+    }
+
+    @Test
+    fun menuKeyIsWiredToAKeyboardController() {
+        // Only the controller's presence is asserted, not triggered:
+        // Popover.popup() on a widget with no realized toplevel window is a
+        // native crash in this headless-and-never-realized test setup (see
+        // ChainEditorTest's identical precedent), not just a warning.
+        val view = newView()
+        view.renderAllPresetsForTest(listOf(summary("A")))
+
+        val row = view.rowFor("A")!!
+        val models = row.observeControllers()
+        val keyControllers = (0 until models.nItems).mapNotNull { models.getItem(it) }.filterIsInstance<EventControllerKey>()
+
+        assertTrue(keyControllers.isNotEmpty())
     }
 
     @Test
