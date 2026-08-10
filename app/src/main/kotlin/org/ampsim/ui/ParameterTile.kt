@@ -51,6 +51,7 @@ fun parameterTile(
                 // The companion entry below is the readout; showing the
                 // dial's own built-in label too would just repeat the number.
                 showValueLabel = false,
+                accessibleLabel = info.name.replaceFirstChar { it.uppercase() },
                 onChanged = { newValue ->
                     entry.text = formatEntryValue(newValue)
                     entry.removeCssClass("error")

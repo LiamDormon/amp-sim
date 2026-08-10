@@ -42,6 +42,12 @@ template $AppWindow: Adw.ApplicationWindow {
             primary: true;
             menu-model: primary_menu;
             tooltip-text: _("Main Menu");
+            accessible-role: button;
+
+            accessibility {
+              label: _("Main Menu");
+              description: _("Open preferences, keyboard shortcuts, and about");
+            }
           }
         }
 
@@ -169,6 +175,11 @@ template $AppWindow: Adw.ApplicationWindow {
           Gtk.Button save_preset_button {
             icon-name: "document-save-symbolic";
             tooltip-text: _("Save Preset");
+            accessible-role: button;
+
+            accessibility {
+              label: _("Save Preset");
+            }
           }
         }
 

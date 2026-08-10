@@ -31,6 +31,9 @@ import org.ampsim.persistence.ConfigManager
 import org.ampsim.persistence.FileSystemPresetRepository
 import org.ampsim.persistence.PresetRepository
 import org.ampsim.ui.AppWindow
+import org.ampsim.ui.AppWindowActionHandlers
+import org.ampsim.ui.buildShortcutsWindow
+import org.ampsim.ui.registerWindowActions
 import org.ampsim.ui.chain.ChainEditor
 import org.ampsim.ui.chain.ChainEditorModel
 import org.ampsim.ui.dashboard.DashboardView
@@ -240,8 +243,8 @@ class App {
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
     fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
 
-    /** Open the "Save Preset" dialog, pre-filled from the active preset (if any). Shared by the header button and the Dashboard's Save quick action. */
-    private fun openSavePresetDialog(window: AppWindow) {
+    /** Open the "Save Preset" dialog, pre-filled from the active preset (if any). Shared by the header button, the Dashboard's Save quick action, and the win.save accelerator. */
+    internal fun openSavePresetDialog(window: AppWindow) {
         val current = chainManager.activePreset.value
         val dialog = SavePresetDialog(
             initialName = current?.metadata?.name ?: "",
@@ -418,6 +421,10 @@ fun main(args: Array<String>) {
 
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
+        // Backs the hamburger menu's already-present but previously-dead
+        // "Keyboard Shortcuts" item (mainwindow.blp's win.show-help-overlay
+        // action) — GTK auto-wires that action to present this once set.
+        mainWindow.setHelpOverlay(buildShortcutsWindow())
         appInstance.bindAudioControls(mainWindow)
         appInstance.bindNoiseGateControls(mainWindow)
         appInstance.bindChainEditor(mainWindow)
@@ -426,6 +433,36 @@ fun main(args: Array<String>) {
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
         appInstance.bindSettingsView(mainWindow)
+
+        // Window-scoped actions ("win.*") backing the keyboard shortcuts below.
+        // Handlers all delegate to methods that already exist for their mouse-driven
+        // equivalents (showPage, toggleLibraryPanel, chainManager.newChain(), etc.) —
+        // this just gives them a second, keyboard-triggered entry point.
+        mainWindow.registerWindowActions(
+            AppWindowActionHandlers(
+                showDashboard = { mainWindow.showPage("dashboard") },
+                showChainEditor = { mainWindow.showPage("editor") },
+                showPresets = { mainWindow.showPage("presets") },
+                showSettings = { mainWindow.showPage("settings") },
+                toggleLibrary = { mainWindow.toggleLibraryPanel() },
+                save = { appInstance.openSavePresetDialog(mainWindow) },
+                load = { mainWindow.showPage("presets") },
+                newChain = { appInstance.chainManager.newChain() },
+                // Stub: no undo history exists yet (see the plan's scope decision).
+                // The action is registered and triggerable so Ctrl+Z doesn't feel
+                // unbound; it just has no effect until a real undo stack is built.
+                undo = {}
+            )
+        )
+        app.setAccelsForAction("win.show-dashboard", arrayOf("<Alt>1"))
+        app.setAccelsForAction("win.show-chain-editor", arrayOf("<Alt>2"))
+        app.setAccelsForAction("win.show-presets", arrayOf("<Alt>3"))
+        app.setAccelsForAction("win.show-settings", arrayOf("<Alt>4"))
+        app.setAccelsForAction("win.toggle-library", arrayOf("<Primary>b"))
+        app.setAccelsForAction("win.save", arrayOf("<Primary>s"))
+        app.setAccelsForAction("win.load", arrayOf("<Primary>l"))
+        app.setAccelsForAction("win.new-chain", arrayOf("<Primary>n"))
+        app.setAccelsForAction("win.undo", arrayOf("<Primary>z"))
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {

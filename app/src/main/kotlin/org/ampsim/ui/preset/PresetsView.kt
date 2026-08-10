@@ -3,15 +3,19 @@ package org.ampsim.ui.preset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.ampsim.persistence.PresetSummary
+import org.ampsim.ui.setAccessibleLabel
 import org.gnome.adw.ActionRow
 import org.gnome.adw.AlertDialog
 import org.gnome.adw.PreferencesGroup
 import org.gnome.adw.ResponseAppearance
+import org.gnome.gdk.Gdk
+import org.gnome.gdk.ModifierType
 import org.gnome.gio.File as GioFile
 import org.gnome.glib.GLib
 import org.gnome.gtk.Align
 import org.gnome.gtk.Box
 import org.gnome.gtk.Button
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.FileDialog
 import org.gnome.gtk.FlowBox
 import org.gnome.gtk.GestureClick
@@ -166,11 +170,13 @@ class PresetsView(
             addCssClass("flat")
             tooltipText = "More options"
             this.name = MORE_BUTTON_NAME
+            setAccessibleLabel("More options", "Rename, duplicate, export, or delete this preset")
         }
         val loadButton = Button.fromIconName("media-playback-start-symbolic").apply {
             addCssClass("flat")
             tooltipText = "Load"
             this.name = LOAD_BUTTON_NAME
+            setAccessibleLabel("Load preset")
         }
         row.addSuffix(loadButton)
         row.addSuffix(moreButton)
@@ -188,6 +194,20 @@ class PresetsView(
         val secondaryClick = GestureClick().apply { setButton(SECONDARY_BUTTON) }
         secondaryClick.onPressed { _, _, _ -> contextMenu.popup() }
         row.addController(secondaryClick)
+
+        // Keyboard equivalent of the right-click above — row is already
+        // focusable as part of the PreferencesGroup's ListBox.
+        val contextMenuKeyController = EventControllerKey()
+        contextMenuKeyController.onKeyPressed { keyval, _, state ->
+            val isMenuKey = keyval == Gdk.KEY_Menu || (keyval == Gdk.KEY_F10 && ModifierType.SHIFT_MASK in state)
+            if (isMenuKey) {
+                contextMenu.popup()
+                true
+            } else {
+                false
+            }
+        }
+        row.addController(contextMenuKeyController)
 
         return RenderedRow(row, contextMenu, loadButton, moreButton)
     }

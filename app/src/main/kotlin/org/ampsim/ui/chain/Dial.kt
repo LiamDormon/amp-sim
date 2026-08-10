@@ -1,15 +1,22 @@
 package org.ampsim.ui.chain
 
+import org.ampsim.ui.setAccessibleLabel
 import org.freedesktop.cairo.Context
 import org.freedesktop.cairo.RadialGradient
+import org.gnome.gdk.Gdk
+import org.gnome.gdk.RGBA
+import org.gnome.gobject.Value
+import org.gnome.gtk.AccessibleProperty
 import org.gnome.gtk.Align
 import org.gnome.gtk.Box
 import org.gnome.gtk.DrawingArea
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.EventControllerScroll
 import org.gnome.gtk.EventControllerScrollFlags
 import org.gnome.gtk.GestureDrag
 import org.gnome.gtk.Label
 import org.gnome.gtk.Orientation
+import org.javagi.gobject.types.Types
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
@@ -43,6 +50,7 @@ class Dial(
     private val logarithmic: Boolean = false,
     private val step: Float = 0f,
     private val showValueLabel: Boolean = true,
+    private val accessibleLabel: String? = null,
     private val onChanged: (Float) -> Unit = {}
 ) : Box(Orientation.VERTICAL, 2), ParameterControl {
 
@@ -78,10 +86,26 @@ class Dial(
         scrollController.onScroll { _, deltaY -> applyScroll(deltaY); true }
         knob.addController(scrollController)
 
+        // Arrow-key adjustment mirrors the scroll-wheel step exactly, so the
+        // knob is fully operable without a mouse (standard slider convention).
+        knob.setFocusable(true)
+        knob.setCanFocus(true)
+        val keyController = EventControllerKey()
+        keyController.onKeyPressed { keyval, _, _ ->
+            when (keyval) {
+                Gdk.KEY_Up, Gdk.KEY_Right -> { applyScroll(-1.0); true }
+                Gdk.KEY_Down, Gdk.KEY_Left -> { applyScroll(1.0); true }
+                else -> false
+            }
+        }
+        knob.addController(keyController)
+
         append(knob)
         if (showValueLabel) append(valueLabel)
 
+        accessibleLabel?.let { knob.setAccessibleLabel(it) }
         updateLabel()
+        updateAccessibleValue()
     }
 
     /** Map a value in [min, max] to a normalized travel fraction in [0, 1]. */
@@ -133,6 +157,7 @@ class Dial(
         if (clamped == value) return
         value = clamped
         updateLabel()
+        updateAccessibleValue()
         knob.queueDraw()
         onChanged(value)
     }
@@ -143,12 +168,57 @@ class Dial(
         if (clamped == value) return
         value = clamped
         updateLabel()
+        updateAccessibleValue()
         knob.queueDraw()
     }
 
     private fun updateLabel() {
         val formatted = "%.${decimals}f".format(value)
         valueLabel.text = if (unitLabel.isNotEmpty()) "$formatted $unitLabel" else formatted
+    }
+
+    /**
+     * Publish the current value to assistive tech via the accessible-value
+     * properties (min/max/now/text) — a screen reader announces these on
+     * focus/interaction. [Dial] keeps its default (generic) accessible role
+     * rather than SLIDER: claiming that role requires registering a real
+     * custom GType (`gtk_widget_class_set_accessible_role` is class-init-time,
+     * not an instance method), which would be a much bigger structural change
+     * than warranted here — the live value alone is what matters for
+     * announcing "what's the current setting."
+     */
+    private fun updateAccessibleValue() {
+        // VALUE_MIN/MAX/NOW are backed by GTK's gdouble accessible-value API,
+        // not gfloat — using Types.FLOAT here compiles fine but trips a
+        // GLib-GObject-CRITICAL (g_value_get_double: assertion
+        // 'G_VALUE_HOLDS_DOUBLE' failed) the moment anything reads the value.
+        knob.updateProperty(
+            arrayOf(AccessibleProperty.VALUE_MIN, AccessibleProperty.VALUE_MAX, AccessibleProperty.VALUE_NOW, AccessibleProperty.VALUE_TEXT),
+            arrayOf(
+                Value().apply { init(Types.DOUBLE); setDouble(min.toDouble()) },
+                Value().apply { init(Types.DOUBLE); setDouble(max.toDouble()) },
+                Value().apply { init(Types.DOUBLE); setDouble(value.toDouble()) },
+                Value().apply { init(Types.STRING); setString(valueLabel.text) }
+            )
+        )
+    }
+
+    /**
+     * Look up a named color (declared via `@define-color` in whatever CSS
+     * is currently cascaded onto [knob]) and fall back to a hardcoded RGB
+     * triple if it isn't resolvable yet (e.g. before any stylesheet has
+     * loaded). This is what lets the accent stroke below participate in
+     * theming — including a system High Contrast GTK theme, which overrides
+     * named colors — despite the rest of this widget being drawn with plain
+     * Cairo calls that bypass CSS entirely.
+     */
+    private fun themeColorOr(name: String, fallback: Triple<Double, Double, Double>): Triple<Double, Double, Double> {
+        val rgba = RGBA()
+        return if (knob.styleContext.lookupColor(name, rgba)) {
+            Triple(rgba.readRed().toDouble(), rgba.readGreen().toDouble(), rgba.readBlue().toDouble())
+        } else {
+            fallback
+        }
     }
 
     /**
@@ -192,8 +262,12 @@ class Dial(
         cr.stroke()
 
         // Filled arc from the start up to the current value, in the app's
-        // single accent color (warm amber = "this is live/active").
-        cr.setSourceRGB(0.85, 0.54, 0.24)
+        // single accent color (warm amber = "this is live/active"). Read from
+        // the CSS cascade rather than hardcoded, so this — unlike the rest of
+        // this Cairo-drawn widget — actually participates in theming,
+        // including a system High Contrast GTK theme overriding named colors.
+        val (accentR, accentG, accentB) = themeColorOr("amp_accent", Triple(0.85, 0.54, 0.24))
+        cr.setSourceRGB(accentR, accentG, accentB)
         cr.setLineWidth(trackWidth)
         cr.arc(cx, cy, trackRadius, clockToCairoRad(START_ANGLE_DEG), clockToCairoRad(valueClockDeg))
         cr.stroke()
@@ -214,6 +288,9 @@ class Dial(
 
     /** Convert a "clock angle" (0 = 12 o'clock, clockwise-positive) to cairo's arc-angle convention. */
     private fun clockToCairoRad(clockDeg: Double): Double = Math.toRadians(clockDeg - 90.0)
+
+    /** The knob's underlying [DrawingArea], for tests that need to drive its controllers directly. */
+    internal fun knobForTest(): DrawingArea = knob
 
     companion object {
         private const val SCROLL_STEP_FRACTION = 0.02f

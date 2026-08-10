@@ -9,9 +9,12 @@ import org.ampsim.model.EffectUnit
 import org.ampsim.ui.Debouncer
 import org.ampsim.ui.libraryDragType
 import org.ampsim.ui.parameterTile
+import org.ampsim.ui.setAccessibleLabel
 import org.gnome.adw.Clamp
 import org.gnome.gdk.ContentProvider
 import org.gnome.gdk.DragAction
+import org.gnome.gdk.Gdk
+import org.gnome.gdk.ModifierType
 import org.gnome.glib.GLib
 import org.gnome.gobject.Value
 import org.gnome.gtk.Align
@@ -19,6 +22,7 @@ import org.gnome.gtk.Box
 import org.gnome.gtk.Button
 import org.gnome.gtk.DragSource
 import org.gnome.gtk.DropTarget
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.Expander
 import org.gnome.gtk.FlowBox
 import org.gnome.gtk.GestureClick
@@ -170,6 +174,7 @@ class ChainEditor(
 
         val dragHandle = Image.fromIconName("list-drag-handle-symbolic")
         dragHandle.addCssClass("chain-unit-drag-handle")
+        dragHandle.setAccessibleLabel("Drag to reorder unit")
 
         val textBox = Box(Orientation.VERTICAL, 2)
         textBox.hexpand = true
@@ -195,6 +200,7 @@ class ChainEditor(
         toggle.addCssClass("chain-unit-toggle")
         toggle.valign = Align.CENTER
         toggle.active = unit.enabled
+        toggle.setAccessibleLabel("${unit.model} enabled")
 
         content.append(dragHandle)
         content.append(textBox)
@@ -267,6 +273,24 @@ class ChainEditor(
         secondaryClickGesture.setButton(SECONDARY_BUTTON)
         secondaryClickGesture.onPressed { _, _, _ -> showContextMenu(row) }
         root.addController(secondaryClickGesture)
+
+        // Keyboard equivalent of the right-click above (Shift+F10 is the
+        // standard GTK "context menu" chord; the dedicated Menu key does the
+        // same on keyboards that have one). Also makes the row itself a Tab
+        // stop, which it wasn't before.
+        root.setFocusable(true)
+        root.setCanFocus(true)
+        val contextMenuKeyController = EventControllerKey()
+        contextMenuKeyController.onKeyPressed { keyval, _, state ->
+            val isMenuKey = keyval == Gdk.KEY_Menu || (keyval == Gdk.KEY_F10 && ModifierType.SHIFT_MASK in state)
+            if (isMenuKey) {
+                showContextMenu(row)
+                true
+            } else {
+                false
+            }
+        }
+        root.addController(contextMenuKeyController)
 
         val dragSource = DragSource()
         dragSource.setActions(DragAction.MOVE)

@@ -14,6 +14,7 @@ import org.ampsim.ui.Debouncer
 import org.ampsim.ui.DialWithEntry
 import org.gnome.gtk.DragSource
 import org.gnome.gtk.DropTarget
+import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.GestureClick
 import org.gnome.gtk.Gtk
 import org.gnome.gtk.Widget
@@ -285,6 +286,30 @@ class ChainEditorTest {
             .filter { it.button == SECONDARY_MOUSE_BUTTON }
 
         assertTrue(secondaryClickGestures.isNotEmpty())
+    }
+
+    @Test
+    fun theRowIsFocusableForKeyboardNavigation() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1))))
+        val root = editor.contextMenuFor("1")!!.parent!!
+
+        assertTrue(root.focusable)
+    }
+
+    @Test
+    fun menuKeyIsWiredToAKeyboardController() {
+        // Mirrors rightClickIsWiredToASecondaryButtonGesture's precedent:
+        // don't actually trigger the handler — Popover.popup() on a widget
+        // with no realized toplevel window is a native crash (confirmed:
+        // it SIGSEGVs the whole test JVM), not just a warning, in this
+        // headless-and-never-realized test setup. Only the controller's
+        // presence is asserted, same as the mouse-gesture equivalent.
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1))))
+        val root = editor.contextMenuFor("1")!!.parent!!
+
+        val keyControllers = controllersOf(root).filterIsInstance<EventControllerKey>()
+
+        assertTrue(keyControllers.isNotEmpty())
     }
 
     @Test

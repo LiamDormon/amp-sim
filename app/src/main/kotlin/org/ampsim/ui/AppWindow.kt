@@ -114,7 +114,8 @@ class AppWindow : ApplicationWindow {
             max = NoiseGate.MAX_THRESHOLD_DB,
             initialValue = NoiseGate.DEFAULT_THRESHOLD_DB,
             unitLabel = "dB",
-            decimals = 0
+            decimals = 0,
+            accessibleLabel = "Noise Gate Threshold"
         ) { thresholdDb -> engine.setNoiseGateThreshold(thresholdDb) }
         noiseGateDialContainer?.append(dial)
 

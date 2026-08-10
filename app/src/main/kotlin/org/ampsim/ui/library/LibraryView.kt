@@ -4,6 +4,7 @@ import org.ampsim.dsp.ModuleDescriptor
 import org.ampsim.ui.LIBRARY_DRAG_PREFIX
 import org.ampsim.ui.libraryDragPayload
 import org.ampsim.ui.parameterTile
+import org.ampsim.ui.setAccessibleLabel
 import org.gnome.gdk.ContentProvider
 import org.gnome.gdk.DragAction
 import org.gnome.gobject.Value
@@ -160,6 +161,7 @@ class LibraryView(
         closeButton.addCssClass("flat")
         closeButton.tooltipText = "Close Library"
         closeButton.name = CLOSE_BUTTON_NAME
+        closeButton.setAccessibleLabel("Close library panel")
         closeButton.onClicked { onCloseRequested() }
 
         header.append(title)
@@ -260,6 +262,7 @@ class LibraryView(
 
         val dragHandle = Image.fromIconName("list-drag-handle-symbolic")
         dragHandle.addCssClass("library-row-drag-handle")
+        dragHandle.setAccessibleLabel("Drag to add to chain")
 
         val nameLabel = Label(descriptor.name)
         nameLabel.addCssClass("library-row-name")

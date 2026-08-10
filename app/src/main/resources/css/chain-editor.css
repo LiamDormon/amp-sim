@@ -64,6 +64,12 @@
 
 @define-color amp_dropzone #62a0ea;
 
+/* Named so they're documented tokens rather than bare magic hex scattered
+ * through the rules below — these are specifically-tuned contrast-on-accent
+ * colors with no direct libadwaita equivalent, so naming them (not a fake
+ * semantic mapping) is the honest fix for theme/high-contrast compatibility. */
+@define-color amp_knob_highlight #d8dade;
+
 /* ── The one shared type device ──────────────────────────────────────────────
  * Defined here and used by library.css too: GTK scopes @define-color per
  * CssProvider, but style classes themselves are global, so both panels get an
@@ -190,7 +196,7 @@
 }
 
 .chain-unit-toggle slider {
-  background-color: #d8dade;
+  background-color: @amp_knob_highlight;
   border-radius: 999px;
   box-shadow: 0 0.0625em 0.0625em alpha(#000, 0.4);
 }
@@ -289,8 +295,8 @@
 }
 
 .chain-dial-entry.error {
-  border-color: #e01b24;
-  box-shadow: 0 0 0 0.0625em alpha(#e01b24, 0.5);
+  border-color: @error_color;
+  box-shadow: 0 0 0 0.0625em alpha(@error_color, 0.5);
 }
 
 /* Boolean parameter switch — same true-bypass LED language as the row's own
@@ -306,7 +312,7 @@
 }
 
 .chain-parameter-toggle-switch slider {
-  background-color: #d8dade;
+  background-color: @amp_knob_highlight;
   border-radius: 999px;
   box-shadow: 0 0.0625em 0.0625em alpha(#000, 0.4);
 }
