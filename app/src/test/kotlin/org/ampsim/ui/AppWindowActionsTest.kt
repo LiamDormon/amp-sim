@@ -1,29 +1,15 @@
 package org.ampsim.ui
 
-import java.nio.file.Paths
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.gnome.gio.Resource
-import org.gnome.gtk.Gtk
-import org.javagi.gtk.types.TemplateTypes
 
 class AppWindowActionsTest {
 
     @BeforeTest
-    fun ensureAppWindowIsRegistered() {
-        if (registered) return
-        Gtk.init()
-        val resourceUrl = checkNotNull(javaClass.getResource("/ampsim.gresource")) {
-            "Missing ampsim.gresource on the test classpath"
-        }
-        val resource = Resource.load(Paths.get(resourceUrl.toURI()).toString())
-        resource.resourcesRegister()
-        TemplateTypes.register(AppWindow::class.java)
-        registered = true
-    }
+    fun ensureAppWindowIsRegistered() = AppWindowTestSupport.ensureAppWindowIsRegistered()
 
     private fun noopHandlers() = AppWindowActionHandlers(
         showDashboard = {}, showChainEditor = {}, showPresets = {}, showSettings = {},
@@ -126,9 +112,5 @@ class AppWindowActionsTest {
         actions.getValue("redo").emitActivate(null)
 
         assertTrue(invoked)
-    }
-
-    companion object {
-        private var registered = false
     }
 }

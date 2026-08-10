@@ -265,6 +265,24 @@ class App {
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
     fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
 
+    /**
+     * Bind the header bar's Undo/Redo buttons: wire their clicks to [undo]/[redo],
+     * and keep them enabled/disabled in step with [ChainManager.canUndo]/
+     * [ChainManager.canRedo] by re-checking on every [ChainManager.chain] emission
+     * — every operation that can change either stack also updates that StateFlow.
+     */
+    fun bindUndoRedoControls(window: AppWindow) {
+        window.bindUndoRedoControls(onUndoRequested = { undo() }, onRedoRequested = { redo() })
+        uiCoroutineScope.launch {
+            chainManager.chain.collect {
+                GLib.idleAdd(0) {
+                    window.setUndoRedoAvailability(chainManager.canUndo(), chainManager.canRedo())
+                    false
+                }
+            }
+        }
+    }
+
     /** Open the "Save Preset" dialog, pre-filled from the active preset (if any). Shared by the header button, the Dashboard's Save quick action, and the win.save accelerator. */
     internal fun openSavePresetDialog(window: AppWindow) {
         val current = chainManager.activePreset.value
@@ -452,6 +470,7 @@ fun main(args: Array<String>) {
         appInstance.bindChainEditor(mainWindow)
         appInstance.bindLibraryView(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
+        appInstance.bindUndoRedoControls(mainWindow)
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
         appInstance.bindSettingsView(mainWindow)
