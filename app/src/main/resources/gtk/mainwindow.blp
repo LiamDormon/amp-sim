@@ -172,13 +172,40 @@ template $AppWindow: Adw.ApplicationWindow {
           }
 
           [end]
-          Gtk.Button save_preset_button {
-            icon-name: "document-save-symbolic";
-            tooltip-text: _("Save Preset");
-            accessible-role: button;
+          Gtk.Box {
+            orientation: horizontal;
+            spacing: 6;
 
-            accessibility {
-              label: _("Save Preset");
+            Gtk.Button undo_button {
+              icon-name: "edit-undo-symbolic";
+              tooltip-text: _("Undo");
+              sensitive: false;
+              accessible-role: button;
+
+              accessibility {
+                label: _("Undo");
+              }
+            }
+
+            Gtk.Button redo_button {
+              icon-name: "edit-redo-symbolic";
+              tooltip-text: _("Redo");
+              sensitive: false;
+              accessible-role: button;
+
+              accessibility {
+                label: _("Redo");
+              }
+            }
+
+            Gtk.Button save_preset_button {
+              icon-name: "document-save-symbolic";
+              tooltip-text: _("Save Preset");
+              accessible-role: button;
+
+              accessibility {
+                label: _("Save Preset");
+              }
             }
           }
         }

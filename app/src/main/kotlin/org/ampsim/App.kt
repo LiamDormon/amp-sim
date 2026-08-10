@@ -184,6 +184,28 @@ class App {
         eventBus.publish(UIEvent.AudioStatusChanged(audioEngine.getStatus()))
     }
 
+    /**
+     * Undo the most recent [chainManager] operation. This goes through
+     * [ChainManager] directly rather than [chainEditorModel]'s own
+     * add/remove/move/setUnitEnabled/setUnitParameter wrappers, so — like
+     * [ChainManager.loadPreset] — the Chain Editor canvas wouldn't otherwise
+     * notice the reverted state; [ChainEditorModel.notifyExternalChange]
+     * forces the same full re-render `notifyExternalChange` already gives a
+     * preset load, which syncs every row's structure *and* every parameter
+     * control's displayed value regardless of whether the undone operation
+     * was structural or a parameter tweak.
+     */
+    fun undo() {
+        chainManager.undo()
+        chainEditorModel.notifyExternalChange()
+    }
+
+    /** Redo the most recently undone operation. See [undo] for why [ChainEditorModel.notifyExternalChange] is needed here too. */
+    fun redo() {
+        chainManager.redo()
+        chainEditorModel.notifyExternalChange()
+    }
+
     /** Mount the Chain Editor canvas into the window's editor page. */
     fun bindChainEditor(window: AppWindow) = window.bindChainEditor(
         ChainEditor(chainEditorModel, onAddUnitRequested = { window.setLibraryPanelVisible(true) })
@@ -242,6 +264,24 @@ class App {
 
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
     fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
+
+    /**
+     * Bind the header bar's Undo/Redo buttons: wire their clicks to [undo]/[redo],
+     * and keep them enabled/disabled in step with [ChainManager.canUndo]/
+     * [ChainManager.canRedo] by re-checking on every [ChainManager.chain] emission
+     * — every operation that can change either stack also updates that StateFlow.
+     */
+    fun bindUndoRedoControls(window: AppWindow) {
+        window.bindUndoRedoControls(onUndoRequested = { undo() }, onRedoRequested = { redo() })
+        uiCoroutineScope.launch {
+            chainManager.chain.collect {
+                GLib.idleAdd(0) {
+                    window.setUndoRedoAvailability(chainManager.canUndo(), chainManager.canRedo())
+                    false
+                }
+            }
+        }
+    }
 
     /** Open the "Save Preset" dialog, pre-filled from the active preset (if any). Shared by the header button, the Dashboard's Save quick action, and the win.save accelerator. */
     internal fun openSavePresetDialog(window: AppWindow) {
@@ -430,6 +470,7 @@ fun main(args: Array<String>) {
         appInstance.bindChainEditor(mainWindow)
         appInstance.bindLibraryView(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
+        appInstance.bindUndoRedoControls(mainWindow)
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
         appInstance.bindSettingsView(mainWindow)
@@ -448,10 +489,8 @@ fun main(args: Array<String>) {
                 save = { appInstance.openSavePresetDialog(mainWindow) },
                 load = { mainWindow.showPage("presets") },
                 newChain = { appInstance.chainManager.newChain() },
-                // Stub: no undo history exists yet (see the plan's scope decision).
-                // The action is registered and triggerable so Ctrl+Z doesn't feel
-                // unbound; it just has no effect until a real undo stack is built.
-                undo = {}
+                undo = { appInstance.undo() },
+                redo = { appInstance.redo() }
             )
         )
         app.setAccelsForAction("win.show-dashboard", arrayOf("<Alt>1"))
@@ -463,6 +502,7 @@ fun main(args: Array<String>) {
         app.setAccelsForAction("win.load", arrayOf("<Primary>l"))
         app.setAccelsForAction("win.new-chain", arrayOf("<Primary>n"))
         app.setAccelsForAction("win.undo", arrayOf("<Primary>z"))
+        app.setAccelsForAction("win.redo", arrayOf("<Primary><Shift>z"))
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {

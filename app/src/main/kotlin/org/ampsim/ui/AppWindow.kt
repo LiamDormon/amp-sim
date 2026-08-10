@@ -67,6 +67,14 @@ class AppWindow : ApplicationWindow {
     @JvmField
     var savePresetButton: Button? = null
 
+    @GtkChild(name = "undo_button")
+    @JvmField
+    var undoButton: Button? = null
+
+    @GtkChild(name = "redo_button")
+    @JvmField
+    var redoButton: Button? = null
+
     @GtkChild(name = "presets_host")
     @JvmField
     var presetsHost: Box? = null
@@ -152,6 +160,18 @@ class AppWindow : ApplicationWindow {
     /** Wire the header bar's "Save Preset" button to [onSaveRequested]. */
     fun bindPresetSaving(onSaveRequested: () -> Unit) {
         savePresetButton?.onClicked { onSaveRequested() }
+    }
+
+    /** Wire the header bar's Undo/Redo buttons to [onUndoRequested]/[onRedoRequested]. */
+    fun bindUndoRedoControls(onUndoRequested: () -> Unit, onRedoRequested: () -> Unit) {
+        undoButton?.onClicked { onUndoRequested() }
+        redoButton?.onClicked { onRedoRequested() }
+    }
+
+    /** Enable/disable the header bar's Undo/Redo buttons, e.g. to mirror [org.ampsim.chain.ChainManager.canUndo]/[org.ampsim.chain.ChainManager.canRedo]. */
+    fun setUndoRedoAvailability(canUndo: Boolean, canRedo: Boolean) {
+        undoButton?.sensitive = canUndo
+        redoButton?.sensitive = canRedo
     }
 
     /** Mount the Presets tab's view widget into its host container. */

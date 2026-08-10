@@ -12,7 +12,8 @@ class AppWindowActionHandlers(
     val save: () -> Unit,
     val load: () -> Unit,
     val newChain: () -> Unit,
-    val undo: () -> Unit
+    val undo: () -> Unit,
+    val redo: () -> Unit
 )
 
 /**
@@ -40,6 +41,7 @@ fun AppWindow.registerWindowActions(handlers: AppWindowActionHandlers): Map<Stri
         action("save", handlers.save),
         action("load", handlers.load),
         action("new-chain", handlers.newChain),
-        action("undo", handlers.undo)
+        action("undo", handlers.undo),
+        action("redo", handlers.redo)
     ).associateBy { it.name }
 }
