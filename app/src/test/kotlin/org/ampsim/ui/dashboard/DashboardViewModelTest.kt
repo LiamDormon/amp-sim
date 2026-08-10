@@ -23,13 +23,15 @@ class DashboardViewModelTest {
         lastKnownPresetName: String? = null,
         chain: Chain = Chain(),
         audioStatus: AudioStatus = AudioStatus(),
-        recentPresets: List<PresetSummary> = emptyList()
+        recentPresets: List<PresetSummary> = emptyList(),
+        enableCPUMonitoring: Boolean = true
     ) = DashboardViewModel(
         activePreset = MutableStateFlow(activePreset),
         lastKnownPresetName = MutableStateFlow(lastKnownPresetName),
         chain = MutableStateFlow(chain),
         audioStatus = MutableStateFlow(audioStatus),
-        recentPresets = MutableStateFlow(recentPresets)
+        recentPresets = MutableStateFlow(recentPresets),
+        enableCPUMonitoring = MutableStateFlow(enableCPUMonitoring)
     )
 
     @Test
@@ -110,6 +112,12 @@ class DashboardViewModelTest {
 
         assertTrue(quiet < moderate)
         assertTrue(moderate < loud)
+    }
+
+    @Test
+    fun showCpuMeterReflectsTheEnableCpuMonitoringFlow() = runBlocking {
+        assertEquals(true, model(enableCPUMonitoring = true).state.first().showCpuMeter)
+        assertEquals(false, model(enableCPUMonitoring = false).state.first().showCpuMeter)
     }
 
     @Test

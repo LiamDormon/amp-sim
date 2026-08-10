@@ -4,11 +4,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import org.gnome.adw.Application
+import org.gnome.adw.ColorScheme
+import org.gnome.adw.StyleManager
 import org.gnome.gio.ApplicationFlags
 import org.ampsim.audio.AudioEngine
 import org.ampsim.chain.ChainManager
@@ -36,6 +40,8 @@ import org.ampsim.ui.library.LibraryViewModel
 import org.ampsim.ui.preset.PresetsView
 import org.ampsim.ui.preset.PresetsViewModel
 import org.ampsim.ui.preset.SavePresetDialog
+import org.ampsim.ui.settings.SettingsView
+import org.ampsim.ui.settings.SettingsViewModel
 import org.gnome.gdk.Display
 import org.gnome.gio.Resource
 import org.gnome.glib.GLib
@@ -81,14 +87,25 @@ class App {
         lastKnownPresetName = chainManager.lastKnownPresetName,
         chain = chainManager.chain,
         audioStatus = eventBus.audioStatusChanged().map { it.status },
-        recentPresets = presetsViewModel.recentPresets
+        recentPresets = presetsViewModel.recentPresets,
+        enableCPUMonitoring = configManager.config.map { it.advanced.enableCPUMonitoring }
+    )
+
+    /** Populated once at startup (and after any output-device restart) via [refreshAvailableAudioDevices]. */
+    private val availableInputDevices = MutableStateFlow<List<String>>(emptyList())
+    private val availableOutputDevices = MutableStateFlow<List<String>>(emptyList())
+    val settingsViewModel = SettingsViewModel(
+        config = configManager.config,
+        audioStatus = eventBus.audioStatusChanged().map { it.status },
+        availableInputDevices = availableInputDevices,
+        availableOutputDevices = availableOutputDevices
     )
     private val autoSaveRepository: PresetRepository =
         FileSystemPresetRepository(FileSystemPresetRepository.getOrCreateAutoSaveDir())
     val autoSaveService = AutoSaveService(
         chainManager,
         autoSaveRepository,
-        interval = configManager.config.value.advanced.autoSaveIntervalSeconds.seconds
+        interval = { configManager.config.value.advanced.autoSaveIntervalSeconds.seconds }
     )
 
     val uiCoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -147,6 +164,13 @@ class App {
     fun start() {
         audioEngine.start()
         autoSaveService.start()
+        refreshAvailableAudioDevices()
+    }
+
+    /** Re-enumerate JACK ports for the Settings tab's device dropdowns (startup, and after a restart). */
+    private fun refreshAvailableAudioDevices() {
+        availableInputDevices.value = audioEngine.getAvailableInputDevices()
+        availableOutputDevices.value = audioEngine.getAvailableOutputDevices()
     }
 
     fun getAudioStatus() = audioEngine.getStatus()
@@ -173,20 +197,45 @@ class App {
     /** Bind the sidebar's noise gate toggle and threshold dial to the audio engine. */
     fun bindNoiseGateControls(window: AppWindow) = window.bindNoiseGateControls(audioEngine)
 
-    /** Bind the audio input selector to the audio engine and persisted config. */
-    fun bindAudioInputSelector(window: AppWindow) = window.bindInputDeviceSelector(
-        engine = audioEngine,
-        selectedDeviceId = configManager.config.value.audio.inputDeviceId,
-    ) { selected ->
-        configManager.updateConfig { current ->
-            current.copy(audio = current.audio.copy(inputDeviceId = selected))
-        }
-    }
+    /** Mount the Settings tab, wiring device/backend/theme/advanced changes to the config store and audio engine. */
+    fun bindSettingsView(window: AppWindow) = window.bindSettingsView(
+        SettingsView(
+            model = settingsViewModel,
+            scope = uiCoroutineScope,
+            onInputDeviceChanged = { selected ->
+                configManager.updateConfig { it.copy(audio = it.audio.copy(inputDeviceId = selected)) }
+                audioEngine.setInputDevice(selected) // live re-route, no restart needed
+            },
+            onOutputDeviceChanged = { selected ->
+                configManager.updateConfig { it.copy(audio = it.audio.copy(outputDeviceId = selected)) }
+                audioEngine.setOutputDevice(selected)
+                audioEngine.restart()
+                refreshAvailableAudioDevices()
+            },
+            onThemeChanged = { theme ->
+                configManager.updateConfig { it.copy(ui = it.ui.copy(theme = theme)) }
+            },
+            onCpuMonitoringChanged = { enabled ->
+                configManager.updateConfig { it.copy(advanced = it.advanced.copy(enableCPUMonitoring = enabled)) }
+            },
+            onLatencyCompensationChanged = { enabled ->
+                configManager.updateConfig { it.copy(advanced = it.advanced.copy(latencyCompensation = enabled)) }
+            },
+            onAutoSaveIntervalChanged = { seconds ->
+                configManager.updateConfig { it.copy(advanced = it.advanced.copy(autoSaveIntervalSeconds = seconds)) }
+            }
+        )
+    )
 
     /** Update the volume display. */
     fun updateVolumeDisplay(window: AppWindow) = window.updateVolumeDisplay(audioEngine)
 
-    fun setAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
+    /**
+     * Re-apply the persisted input device selection to the audio engine, e.g.
+     * on config load. Distinct from [bindSettingsView]'s `onInputDeviceChanged`
+     * callback, which applies a live, user-driven selection.
+     */
+    fun restoreAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
 
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
     fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
@@ -359,16 +408,24 @@ fun main(args: Array<String>) {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+        val settingsCssProvider = CssProvider()
+        settingsCssProvider.loadFromResource("/org/ampsim/css/settings.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            settingsCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         appInstance.bindAudioControls(mainWindow)
         appInstance.bindNoiseGateControls(mainWindow)
-        appInstance.bindAudioInputSelector(mainWindow)
         appInstance.bindChainEditor(mainWindow)
         appInstance.bindLibraryView(mainWindow)
         appInstance.bindPresetSaving(mainWindow)
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
+        appInstance.bindSettingsView(mainWindow)
 
         // Set up periodic volume display updates (every 50ms = 20Hz refresh rate)
         GLib.timeoutAdd(0, 50) {
@@ -381,8 +438,22 @@ fun main(args: Array<String>) {
             appInstance.configManager.config.collectLatest { config ->
                 GLib.idleAdd(0) {
                     mainWindow.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
-                    mainWindow.setInputDeviceSelection(config.audio.inputDeviceId)
-                    appInstance.setAudioInputDevice(config.audio.inputDeviceId)
+                    appInstance.restoreAudioInputDevice(config.audio.inputDeviceId)
+                    false
+                }
+            }
+        }
+
+        // No theme-application logic exists elsewhere: AdwStyleManager owns the
+        // actual light/dark switch, so this collector is themeSelection's only consumer.
+        appInstance.uiCoroutineScope.launch {
+            appInstance.configManager.config.map { it.ui.theme }.distinctUntilChanged().collectLatest { theme ->
+                GLib.idleAdd(0) {
+                    StyleManager.getDefault().colorScheme = when (theme) {
+                        "light" -> ColorScheme.FORCE_LIGHT
+                        "dark" -> ColorScheme.FORCE_DARK
+                        else -> ColorScheme.DEFAULT
+                    }
                     false
                 }
             }

@@ -8,10 +8,8 @@ import org.gnome.adw.ViewSwitcherSidebar
 import org.gnome.adw.WindowTitle
 import org.gnome.gtk.Box
 import org.gnome.gtk.Button
-import org.gnome.gtk.DropDown
 import org.gnome.gtk.ToggleButton
 import org.gnome.gtk.ProgressBar
-import org.gnome.gtk.StringList
 import org.javagi.gtk.annotations.GtkChild
 import org.javagi.gtk.annotations.GtkTemplate
 import org.ampsim.audio.AudioEngine
@@ -21,6 +19,7 @@ import org.ampsim.ui.chain.Dial
 import org.ampsim.ui.dashboard.DashboardView
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
+import org.ampsim.ui.settings.SettingsView
 
 @GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
 class AppWindow : ApplicationWindow {
@@ -39,10 +38,6 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "playback_toggle")
     @JvmField
     var playbackToggle: ToggleButton? = null
-
-    @GtkChild(name = "input_device_combo")
-    @JvmField
-    var inputDeviceCombo: DropDown? = null
 
     @GtkChild(name = "noise_gate_toggle")
     @JvmField
@@ -80,12 +75,13 @@ class AppWindow : ApplicationWindow {
     @JvmField
     var dashboardHost: Box? = null
 
+    @GtkChild(name = "settings_host")
+    @JvmField
+    var settingsHost: Box? = null
+
     @GtkChild(name = "content_stack")
     @JvmField
     var contentStack: ViewStack? = null
-
-    private var inputDeviceSelectionGuard = false
-    private var inputDeviceIds: List<String> = emptyList()
 
     /** Mount the Chain Editor canvas widget into its host container. */
     fun bindChainEditor(chainEditor: ChainEditor) {
@@ -130,57 +126,9 @@ class AppWindow : ApplicationWindow {
         }
     }
 
-    fun bindInputDeviceSelector(
-        engine: AudioEngine,
-        selectedDeviceId: String?,
-        onSelectionChanged: (String?) -> Unit
-    ) {
-        inputDeviceCombo?.apply {
-            inputDeviceSelectionGuard = true
-            inputDeviceIds = engine.getAvailableInputDevices()
-            setModel(StringList(inputDeviceIds.toTypedArray()))
-            setEnableSearch(true)
-            setShowArrow(true)
-
-            val selectedPort = when {
-                selectedDeviceId != null && inputDeviceIds.contains(selectedDeviceId) -> selectedDeviceId
-                inputDeviceIds.isNotEmpty() -> inputDeviceIds.first()
-                else -> null
-            }
-
-            if (selectedPort != null) {
-                setSelected(inputDeviceIds.indexOf(selectedPort))
-                engine.setInputDevice(selectedPort)
-            } else {
-                engine.setInputDevice(null)
-            }
-
-            inputDeviceSelectionGuard = false
-
-            onActivate {
-                if (inputDeviceSelectionGuard) return@onActivate
-                val activePort = inputDeviceIds.getOrNull(getSelected())
-                engine.setInputDevice(activePort)
-                onSelectionChanged(activePort)
-            }
-        }
-    }
-
-    fun setInputDeviceSelection(selectedDeviceId: String?) {
-        inputDeviceSelectionGuard = true
-        inputDeviceCombo?.apply {
-            if (selectedDeviceId.isNullOrBlank()) {
-                setSelected(-1)
-            } else {
-                val index = inputDeviceIds.indexOf(selectedDeviceId)
-                if (index >= 0) {
-                    setSelected(index)
-                } else {
-                    setSelected(-1)
-                }
-            }
-        }
-        inputDeviceSelectionGuard = false
+    /** Mount the Settings tab's view widget into its host container. */
+    fun bindSettingsView(view: SettingsView) {
+        settingsHost?.append(view)
     }
 
     /**

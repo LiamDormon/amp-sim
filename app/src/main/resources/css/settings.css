@@ -1,0 +1,7 @@
+/* Settings tab — mostly stock libadwaita PreferencesGroup/Row styling; the
+ * only bespoke rule here matches the window background other tabs use.
+ */
+
+.settings-view {
+  background-color: @window_bg_color;
+}

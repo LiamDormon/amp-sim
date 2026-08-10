@@ -19,7 +19,9 @@ data class DashboardState(
     /** Normalized meter fraction in `[0, 1]`, dB-scaled from the engine's raw linear RMS — see [amplitudeToMeterFraction]. */
     val inputLevel: Float,
     /** Normalized meter fraction in `[0, 1]`, dB-scaled from the engine's raw linear RMS — see [amplitudeToMeterFraction]. */
-    val outputLevel: Float
+    val outputLevel: Float,
+    /** From Settings' CPU Monitoring toggle. CPU is always self-measured regardless — this only gates the meter's visibility. */
+    val showCpuMeter: Boolean = true
 )
 
 /**
@@ -52,12 +54,15 @@ class DashboardViewModel(
     chain: Flow<Chain>,
     audioStatus: Flow<AudioStatus>,
     /** Passed through unmodified — already resolves the recent-presets MRU list to summaries. */
-    val recentPresets: Flow<List<PresetSummary>>
+    val recentPresets: Flow<List<PresetSummary>>,
+    /** From Settings' CPU Monitoring toggle, e.g. `configManager.config.map { it.advanced.enableCPUMonitoring }`. */
+    enableCPUMonitoring: Flow<Boolean>
 ) {
     val state: Flow<DashboardState> = combine(
         combine(activePreset, lastKnownPresetName, chain, ::Triple),
-        audioStatus
-    ) { (preset, lastName, chain), status ->
+        audioStatus,
+        enableCPUMonitoring
+    ) { (preset, lastName, chain), status, showCpuMeter ->
         DashboardState(
             presetDisplayName = preset?.metadata?.name ?: lastName ?: "Untitled",
             // A brand-new, never-loaded-or-saved chain isn't "dirty" -- there's
@@ -68,7 +73,8 @@ class DashboardViewModel(
             cpuLoadPercent = (status.cpuLoad * 100).roundToInt().coerceIn(0, 100),
             isJackConnected = status.isConnected,
             inputLevel = amplitudeToMeterFraction(status.inputLevel),
-            outputLevel = amplitudeToMeterFraction(status.outputLevel)
+            outputLevel = amplitudeToMeterFraction(status.outputLevel),
+            showCpuMeter = showCpuMeter
         )
     }
 }
