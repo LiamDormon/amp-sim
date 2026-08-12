@@ -4,6 +4,7 @@ import org.ampsim.dsp.DSPModuleFactory
 import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ModuleDescriptor
 import org.ampsim.dsp.ParameterInfo
+import org.ampsim.lv2.LV2PluginInfo
 
 /**
  * Everything the details panel shows for one module, including the bits that
@@ -32,6 +33,7 @@ data class ModuleDetails(
  */
 class LibraryViewModel(
     private val catalog: ModuleCatalog = ModuleCatalog.bundled,
+    private val lv2: LV2CatalogSource = DefaultLv2CatalogSource,
     private val sampleRate: Int = DEFAULT_PREVIEW_SAMPLE_RATE
 ) {
 
@@ -78,28 +80,56 @@ class LibraryViewModel(
     fun clearSearch() = setSearchQuery("")
 
     /**
+     * Built-in categories followed by an "LV2 Plugins" category, present only
+     * when [lv2] currently has entries — a plugin-less system (or one where
+     * the background scan hasn't completed yet) just shows the built-ins,
+     * same as before LV2 support existed.
+     */
+    private fun allByCategory(): Map<String, List<ModuleDescriptor>> {
+        val lv2Descriptors = lv2.descriptors()
+        return if (lv2Descriptors.isEmpty()) catalog.byCategory else catalog.byCategory + (LV2PluginInfo.LV2_CATEGORY to lv2Descriptors)
+    }
+
+    /**
      * Modules matching the current query, grouped under their category heading
      * in catalog order. Categories left with no matches are omitted entirely so
      * the panel doesn't show a wall of empty sections while searching.
      */
     fun filteredByCategory(): Map<String, List<ModuleDescriptor>> {
-        if (searchQuery.isBlank()) return catalog.byCategory
-        return catalog.byCategory
+        val all = allByCategory()
+        if (searchQuery.isBlank()) return all
+        return all
             .mapValues { (_, modules) -> modules.filter { matches(it, searchQuery) } }
             .filterValues { it.isNotEmpty() }
+    }
+
+    /**
+     * Re-reads [lv2] and notifies listeners, dropping any cached LV2 details
+     * so a plugin discovered by a later background scan gets fresh details
+     * on next selection. Called once the background discovery scan
+     * completes (see `App.kt`) — built-in details are untouched.
+     */
+    fun refreshLv2Descriptors() {
+        detailsCache.keys.removeAll { it.startsWith(LV2PluginInfo.LV2_TYPE_PREFIX) }
+        val results = filteredByCategory()
+        resultsListeners.forEach { it(results) }
     }
 
     /** Details for the current selection, or `null` when nothing is selected. */
     fun selectedDetails(): ModuleDetails? = selectedType?.let { detailsFor(it) }
 
     /**
-     * Resolve display details for [type], building a throwaway module to read
-     * its latency and CPU load. Safe to call from the UI thread: this is the
-     * same off-the-audio-thread construction path
+     * Resolve display details for [type]. An LV2 type ([LV2PluginInfo.LV2_TYPE_PREFIX]
+     * prefix) is read directly from [lv2]'s cached discovery metadata — never
+     * a live instantiation. A built-in type builds a throwaway module to
+     * read its latency and CPU load; safe to call from the UI thread, since
+     * this is the same off-the-audio-thread construction path
      * [DSPModuleFactory.parametersFor] already uses, and the instance is
      * discarded — it never reaches [org.ampsim.audio.AudioEngine].
      */
     fun detailsFor(type: String): ModuleDetails? = detailsCache.getOrPut(type) {
+        if (type.startsWith(LV2PluginInfo.LV2_TYPE_PREFIX)) return@getOrPut lv2.detailsFor(type)
+
         val descriptor = catalog.descriptorFor(type) ?: return@getOrPut null
         val module = DSPModuleFactory.create(type, sampleRate) ?: return@getOrPut null
         val latencySamples = module.getLatencySamples()

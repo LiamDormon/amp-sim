@@ -5,6 +5,8 @@ import org.ampsim.dsp.effects.GenericChorus
 import org.ampsim.dsp.effects.GenericDelay
 import org.ampsim.dsp.effects.GenericOverdrive
 import org.ampsim.dsp.effects.GenericReverb
+import org.ampsim.lv2.LV2DiscoveryTest
+import org.ampsim.lv2.LV2PluginCache
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import kotlin.test.Test
@@ -96,5 +98,35 @@ class DSPModuleFactoryTest {
         val modules = DSPModuleFactory.createChain(chain)
         assertEquals(1, modules.size)
         assertEquals("overdrive", modules[0].type)
+    }
+
+    // ---- LV2 dispatch ---------------------------------------------------
+
+    @Test
+    fun returnsNullForAnLv2TypeWithABogusUri() {
+        // Unconditional: a nonexistent URI is never discoverable regardless
+        // of what's installed, so this covers "invalid/corrupted plugin
+        // reference" without needing any real plugin present.
+        assertNull(DSPModuleFactory.create("lv2:not-a-real-uri://nowhere"))
+    }
+
+    @Test
+    fun aNonLv2UnknownTypeStillReturnsNull() {
+        // Guards against the lv2: dispatch swallowing plain unknown types.
+        assertNull(DSPModuleFactory.create("fuzz-o-tron"))
+    }
+
+    @Test
+    fun createsAnLv2ModuleForARealInstalledPlugin() {
+        val uri = LV2DiscoveryTest.VALVE_URI
+        if (LV2PluginCache.discovered.none { it.uri == uri }) {
+            println("Skipping: swh-lv2 not installed on this system")
+            return
+        }
+
+        val module = DSPModuleFactory.create("lv2:$uri")
+        assertNotNull(module)
+        assertTrue(module is LV2ModuleAdapter)
+        assertEquals("lv2:$uri", module.type)
     }
 }

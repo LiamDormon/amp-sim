@@ -10,18 +10,22 @@ for real-time audio I/O. Root Gradle project name is `amp-sim`; the single
 module is `app`.
 
 `docs/AMPCHAIN_DESIGN_SPEC.md` is the aspirational product/architecture spec
-(note: it uses an older package name `com.ampchain`/`Unit` model class, Kotest,
-LV2 hosting — these are **not** what's implemented). `docs/AUDIO_ENGINE_AND_DSP.md`
-describes the **actual current implementation** of the audio engine and DSP
-pipeline under `app/src/main/kotlin/org/ampsim/{audio,dsp}` — read that one
-first when touching audio code, it stays in sync with the code.
+(note: it uses an older package name `com.ampchain`/`Unit` model class, Kotest
+— these are **not** what's implemented, and its `LV2ModuleAdapter` sketch is
+pseudocode against a stale `BaseDSPModule` signature, not usable code — the
+real LV2 host is `org.ampsim.lv2`/`dsp/LV2ModuleAdapter.kt`, see below).
+`docs/AUDIO_ENGINE_AND_DSP.md` describes the **actual current implementation**
+of the audio engine and DSP pipeline under `app/src/main/kotlin/org/ampsim/{audio,dsp}`
+— read that one first when touching audio code, it stays in sync with the code.
 
 ## Build, run, test
 
 Requires JDK 25 and native tools on PATH: `blueprint-compiler`,
 `glib-compile-resources`, plus GTK4/libadwaita/JACK dev headers at runtime
 (see `.github/workflows/ci-build.yaml` for the exact apt packages on
-Ubuntu/GNOME).
+Ubuntu/GNOME). `liblilv-0-0` (the LV2 host C library) is an **optional**
+runtime dependency: the app degrades to an empty "LV2 Plugins" Library
+section, logging a warning, when it's absent — see `org.ampsim.lv2.ffi.LilvNative.available`.
 
 ```bash
 ./gradlew build          # full build (compiles resources, Kotlin, runs tests)
@@ -53,8 +57,12 @@ Three layers, each progressively more real-time-constrained:
 - **DSP** (`dsp/`) — `DSPModule` interface + `BaseDSPModule` (shared parameter
   map, buffer validation, state (de)serialization) + concrete effects in
   `dsp/effects/` (`GenericOverdrive`, `GenericAmp`, `GenericDelay` — placeholder
-  simulations, not modeled hardware). `DSPModuleFactory` turns model objects
-  into runnable `DSPModule` instances **off the audio thread**.
+  simulations, not modeled hardware), plus `LV2ModuleAdapter` wrapping an
+  external LV2 plugin (`org.ampsim.lv2`: Panama-FFI bindings to liblilv,
+  discovery/caching, a per-instance native host). `DSPModuleFactory` turns
+  model objects into runnable `DSPModule` instances **off the audio thread**;
+  an `EffectUnit.type` of `"lv2:<plugin URI>"` dispatches to `LV2ModuleAdapter.create`
+  instead of the built-in `when` branches — see `org.ampsim.lv2.LV2PluginInfo.LV2_TYPE_PREFIX`.
 - **Audio** (`audio/`) — `AudioEngine` owns the JACK client
   (`JackClient`, a thin JNAJack wrapper), the active DSP chain, and the
   real-time process callback. `LockFreeRingBuffer<T>` is a pre-allocated SPSC

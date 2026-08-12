@@ -23,6 +23,7 @@ import org.ampsim.events.chainModified
 import org.ampsim.events.parameterChanged
 import org.ampsim.events.presetLoaded
 import org.ampsim.events.presetSaved
+import org.ampsim.lv2.LV2PluginCache
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.model.Preset
@@ -168,6 +169,23 @@ class App {
         audioEngine.start()
         autoSaveService.start()
         refreshAvailableAudioDevices()
+        scanForLv2Plugins()
+    }
+
+    /**
+     * Scan the system for LV2 plugins in the background: [LV2PluginCache.refresh]
+     * does a full disk scan (potentially seconds), so it must never run on
+     * the GTK main thread. The Library shows just the built-ins until this
+     * completes, then repopulates via [org.ampsim.ui.library.LibraryViewModel.refreshLv2Descriptors].
+     */
+    private fun scanForLv2Plugins() {
+        uiCoroutineScope.launch(Dispatchers.IO) {
+            LV2PluginCache.refresh()
+            GLib.idleAdd(0) {
+                libraryViewModel.refreshLv2Descriptors()
+                false
+            }
+        }
     }
 
     /** Re-enumerate JACK ports for the Settings tab's device dropdowns (startup, and after a restart). */
@@ -182,6 +200,11 @@ class App {
     fun publishAudioStatus() {
         audioEngine.updateStatus()
         eventBus.publish(UIEvent.AudioStatusChanged(audioEngine.getStatus()))
+    }
+
+    /** Dispose any DSP modules the audio engine retired since the last call (see [AudioEngine.pollRetiredModules]). */
+    fun pollRetiredAudioModules() {
+        audioEngine.pollRetiredModules()
     }
 
     /**
@@ -508,6 +531,7 @@ fun main(args: Array<String>) {
         GLib.timeoutAdd(0, 50) {
             appInstance.updateVolumeDisplay(mainWindow)
             appInstance.publishAudioStatus()
+            appInstance.pollRetiredAudioModules()
             true  // Keep the timeout active
         }
 

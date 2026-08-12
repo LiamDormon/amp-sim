@@ -2,11 +2,25 @@ package org.ampsim.ui.library
 
 import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ModuleDescriptor
+import org.ampsim.dsp.ParameterInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+/** In-memory [LV2CatalogSource] so Library-merge behavior is testable without any real LV2/FFI dependency. */
+private class FakeLv2CatalogSource(
+    private val entries: Map<String, ModuleDetails> = emptyMap()
+) : LV2CatalogSource {
+    override fun descriptors(): List<ModuleDescriptor> = entries.values.map { it.descriptor }
+    override fun detailsFor(type: String): ModuleDetails? = entries[type]
+}
+
+private fun lv2Descriptor(uri: String, name: String) = ModuleDescriptor(
+    type = "lv2:$uri", name = name, category = "LV2 Plugins", description = "LV2 plugin loaded from the system plugin path ($uri)."
+)
 
 class LibraryViewModelTest {
 
@@ -22,7 +36,7 @@ class LibraryViewModelTest {
 
     @Test
     fun showsEveryCategoryByDefault() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         val results = model.filteredByCategory()
 
         assertEquals(
@@ -34,7 +48,7 @@ class LibraryViewModelTest {
 
     @Test
     fun searchMatchesName() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("Chorus")
 
         val results = model.filteredByCategory()
@@ -47,7 +61,7 @@ class LibraryViewModelTest {
         // "delay" is the Delays category name and also appears in the chorus's
         // description ("Swept delay line") — a match anywhere should surface the
         // module, so this query spans two categories rather than just its own.
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("delay")
 
         assertEquals(listOf("Delays", "Modulations"), model.filteredByCategory().keys.toList())
@@ -55,7 +69,7 @@ class LibraryViewModelTest {
 
     @Test
     fun searchMatchesDescription() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("Schroeder")
 
         val results = model.filteredByCategory()
@@ -64,7 +78,7 @@ class LibraryViewModelTest {
 
     @Test
     fun searchMatchesCategory() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("Modulations")
 
         val results = model.filteredByCategory()
@@ -74,7 +88,7 @@ class LibraryViewModelTest {
 
     @Test
     fun searchIsCaseInsensitive() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("GENERIC OVERDRIVE")
         assertEquals(listOf("Overdrives"), model.filteredByCategory().keys.toList())
 
@@ -84,14 +98,14 @@ class LibraryViewModelTest {
 
     @Test
     fun searchWithNoMatchesYieldsEmptyResults() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("theremin")
         assertTrue(model.filteredByCategory().isEmpty())
     }
 
     @Test
     fun clearingSearchRestoresEveryCategory() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         model.setSearchQuery("Chorus")
         assertEquals(1, model.filteredByCategory().size)
 
@@ -101,7 +115,7 @@ class LibraryViewModelTest {
 
     @Test
     fun resultsListenerFiresImmediatelyAndOnSearch() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         val seen = mutableListOf<Int>()
         model.addResultsListener { seen.add(it.size) }
 
@@ -113,7 +127,7 @@ class LibraryViewModelTest {
 
     @Test
     fun repeatedSearchQueryDoesNotRenotify() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         var notifications = 0
         model.addResultsListener { notifications++ }
 
@@ -124,7 +138,7 @@ class LibraryViewModelTest {
 
     @Test
     fun selectionRoundTrips() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         assertNull(model.selectedType)
         assertNull(model.selectedDetails())
 
@@ -138,7 +152,7 @@ class LibraryViewModelTest {
 
     @Test
     fun selectionListenerReceivesDetails() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         val seen = mutableListOf<String?>()
         model.addSelectionListener { seen.add(it?.descriptor?.name) }
 
@@ -150,7 +164,7 @@ class LibraryViewModelTest {
 
     @Test
     fun detailsCarryParametersLatencyAndCpuLoad() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         val details = model.detailsFor("delay")
 
         assertNotNull(details)
@@ -162,7 +176,7 @@ class LibraryViewModelTest {
 
     @Test
     fun detailsAreCachedPerType() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         assertTrue(
             model.detailsFor("reverb") === model.detailsFor("reverb"),
             "details should be resolved once and reused"
@@ -171,7 +185,7 @@ class LibraryViewModelTest {
 
     @Test
     fun detailsForUnknownTypeIsNull() {
-        val model = LibraryViewModel(testCatalog())
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
         assertNull(model.detailsFor("fuzz-o-tron"))
     }
 
@@ -182,5 +196,50 @@ class LibraryViewModelTest {
             ModuleCatalog(listOf(ModuleDescriptor("flanger", "Flanger", "Modulations", "not built yet")))
         )
         assertNull(model.detailsFor("flanger"))
+    }
+
+    // ---- LV2 catalog merge ------------------------------------------------
+
+    @Test
+    fun noLv2CategoryWhenTheSourceHasNoEntries() {
+        val model = LibraryViewModel(testCatalog(), FakeLv2CatalogSource())
+        assertFalse(model.filteredByCategory().containsKey("LV2 Plugins"))
+    }
+
+    @Test
+    fun lv2CategoryAppearsWhenTheSourceHasEntries() {
+        val descriptor = lv2Descriptor("http://example.org/foo", "Foo")
+        val source = FakeLv2CatalogSource(
+            mapOf(descriptor.type to ModuleDetails(descriptor, emptyList(), 0, 0f, 0f))
+        )
+        val model = LibraryViewModel(testCatalog(), source)
+
+        val results = model.filteredByCategory()
+        assertTrue(results.containsKey("LV2 Plugins"))
+        assertEquals(listOf("Foo"), results["LV2 Plugins"]?.map { it.name })
+        // Built-ins are untouched by the merge.
+        assertEquals(6, results.size)
+    }
+
+    @Test
+    fun detailsForAnLv2TypeRoutesToTheLv2SourceNotTheBuiltInPath() {
+        val descriptor = lv2Descriptor("http://example.org/foo", "Foo")
+        val details = ModuleDetails(descriptor, listOf(ParameterInfo("gain", 0f, 1f, 0.5f)), 0, 0f, 0f)
+        val source = FakeLv2CatalogSource(mapOf(descriptor.type to details))
+        val model = LibraryViewModel(testCatalog(), source)
+
+        assertEquals(details, model.detailsFor("lv2:http://example.org/foo"))
+    }
+
+    @Test
+    fun searchMatchesLv2EntriesByName() {
+        val descriptor = lv2Descriptor("http://example.org/foo", "Foobinator")
+        val source = FakeLv2CatalogSource(
+            mapOf(descriptor.type to ModuleDetails(descriptor, emptyList(), 0, 0f, 0f))
+        )
+        val model = LibraryViewModel(testCatalog(), source)
+
+        model.setSearchQuery("Foobinator")
+        assertEquals(listOf("LV2 Plugins"), model.filteredByCategory().keys.toList())
     }
 }

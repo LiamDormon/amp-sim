@@ -34,6 +34,14 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     private val commandQueue = LockFreeRingBuffer<AudioCommand>(COMMAND_QUEUE_CAPACITY)
     private val droppedCommands = AtomicLong(0)
 
+    // ---- Retired-module disposal (audio thread -> control thread) -----------
+    // A module retired from activeChain/crossfadeOldChain (an LV2 adapter's
+    // native Arena, specifically) must be freed off the RT thread. This queue
+    // mirrors commandQueue's direction reversed: the RT thread offers, the
+    // control thread polls via pollRetiredModules().
+    private val retiredModules = LockFreeRingBuffer<List<DSPModule>>(RETIRED_QUEUE_CAPACITY)
+    private val retiredModulesOverflowCount = AtomicLong(0)
+
     @Volatile private var inputDeviceId: String? = null
     @Volatile private var outputDeviceId: String? = null
 
@@ -211,6 +219,28 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     /** Number of commands dropped because the queue was full. */
     fun getDroppedCommandCount(): Long = droppedCommands.get()
 
+    /** Number of retired-module batches lost because the disposal queue was full (leaked, never disposed). */
+    fun getRetiredModulesOverflowCount(): Long = retiredModulesOverflowCount.get()
+
+    /**
+     * Dispose every module retired since the last call — frees native
+     * resources (e.g. an LV2 adapter's Arena) off the real-time thread.
+     * Control-thread only; safe to call on a timer (see `App.kt`) and once
+     * more from [stop] to flush any stragglers.
+     */
+    fun pollRetiredModules() {
+        while (true) {
+            val batch = retiredModules.poll() ?: break
+            for (module in batch) {
+                try {
+                    module.dispose()
+                } catch (e: Exception) {
+                    logger.log(Level.WARNING, "dispose() failed for module '${module.type}': ${e.message}", e)
+                }
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
@@ -240,6 +270,13 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
 
     fun stop() {
         jackClient.close()
+        // jackClient.close() guarantees process() won't be called again, so
+        // it's now safe to flush anything the RT thread retired but this
+        // hasn't drained yet. Deliberately does NOT dispose activeChain
+        // itself: restart() reuses those same module instances across a
+        // stop()/start() cycle, so disposing them here would hand back
+        // dangling native handles on the next loadModules(chainSnapshot).
+        pollRetiredModules()
         status = AudioStatus()
         logger.info("Audio engine stopped")
     }
@@ -336,6 +373,7 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
 
             crossfadeRemainingFrames = (crossfadeRemainingFrames - framesToCopy).coerceAtLeast(0)
             if (crossfadeRemainingFrames == 0) {
+                retireChain(crossfadeOldChain)
                 crossfadeOldChain = emptyList()
             }
         } else if (chain.isEmpty()) {
@@ -405,14 +443,21 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     private fun applyCommand(command: AudioCommand) {
         when (command) {
             is AudioCommand.LoadChain -> {
-                activeChain = command.modules
+                retireChain(activeChain)
                 // An ordinary structural swap must win over any in-flight fade:
                 // continuing to blend against a chain the caller just replaced
                 // would be confusing, so drop it and hard-swap instead.
+                retireChain(crossfadeOldChain)
+                activeChain = command.modules
                 crossfadeOldChain = emptyList()
                 crossfadeRemainingFrames = 0
             }
             is AudioCommand.CrossfadeToChain -> {
+                // A fade already in flight when another one is requested:
+                // its outgoing chain is being replaced before it finished
+                // decaying, so retire it now rather than losing the
+                // reference when crossfadeOldChain is overwritten below.
+                if (crossfadeRemainingFrames > 0) retireChain(crossfadeOldChain)
                 crossfadeOldChain = activeChain
                 activeChain = command.modules
                 crossfadeTotalFrames = command.fadeFrames.coerceAtLeast(1)
@@ -428,6 +473,20 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
             is AudioCommand.SetPlayback -> rtPlaybackEnabled = command.enabled
             is AudioCommand.SetNoiseGateEnabled -> noiseGate.enabled = command.enabled
             is AudioCommand.SetNoiseGateThreshold -> noiseGate.thresholdDb = command.thresholdDb
+        }
+    }
+
+    /**
+     * Hand a chain that's no longer reachable off to [pollRetiredModules]
+     * for disposal. Runs on the audio thread ([applyCommand]/[process] are
+     * both RT), so this must stay RT-safe: [LockFreeRingBuffer.offer] never
+     * allocates or blocks, and on overflow this only increments an atomic
+     * counter — never logs — since logging can allocate/block.
+     */
+    private fun retireChain(chain: List<DSPModule>) {
+        if (chain.isEmpty()) return
+        if (!retiredModules.offer(chain)) {
+            retiredModulesOverflowCount.incrementAndGet()
         }
     }
 
@@ -477,6 +536,7 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     companion object {
         private const val CLIENT_NAME = "AmpChain"
         private const val COMMAND_QUEUE_CAPACITY = 256
+        private const val RETIRED_QUEUE_CAPACITY = 16
         private const val DEFAULT_MAX_BLOCK = 8192
         const val DEFAULT_CROSSFADE_MS = 200
 

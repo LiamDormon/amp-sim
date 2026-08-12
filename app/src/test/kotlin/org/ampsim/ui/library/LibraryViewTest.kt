@@ -14,6 +14,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+/** No LV2 plugins — keeps these tests deterministic regardless of what's actually installed on the machine running them. */
+private object EmptyLv2CatalogSource : LV2CatalogSource {
+    override fun descriptors(): List<ModuleDescriptor> = emptyList()
+    override fun detailsFor(type: String): ModuleDetails? = null
+}
+
 class LibraryViewTest {
 
     @BeforeTest
@@ -33,7 +39,7 @@ class LibraryViewTest {
     )
 
     private fun buildView(onClose: () -> Unit = {}) =
-        LibraryView(LibraryViewModel(testCatalog()), onClose)
+        LibraryView(LibraryViewModel(testCatalog(), EmptyLv2CatalogSource), onClose)
 
     private fun controllersOf(widget: Widget): List<Any> {
         val models = widget.observeControllers()
@@ -193,7 +199,7 @@ class LibraryViewTest {
 
     @Test
     fun detailsPanelStaysEmptyWhenThereIsNothingToShow() {
-        val view = LibraryView(LibraryViewModel(ModuleCatalog(emptyList())))
+        val view = LibraryView(LibraryViewModel(ModuleCatalog(emptyList()), EmptyLv2CatalogSource))
         assertFalse(view.isDetailsVisible())
     }
 

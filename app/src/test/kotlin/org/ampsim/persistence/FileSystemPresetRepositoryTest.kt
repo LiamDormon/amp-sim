@@ -60,6 +60,32 @@ class FileSystemPresetRepositoryTest {
     }
 
     @Test
+    fun lv2EffectUnitRoundTripsThroughSaveAndLoad() = runBlocking {
+        // Persistence needs zero LV2-specific changes: an LV2 EffectUnit's
+        // type/model/parameters are plain strings and floats, same as any
+        // built-in unit, so this only needs to prove the existing round-trip
+        // path handles them — no LV2/FFI code is touched by this test at all.
+        val preset = Preset.create(
+            name = "LV2 Round Trip",
+            effectUnits = listOf(
+                EffectUnit(
+                    id = "1",
+                    type = "lv2:http://example.org/fake",
+                    model = "Fake LV2 Plugin",
+                    parameters = mapOf("gain" to 0.5f, "tone" to 0.25f)
+                )
+            )
+        )
+
+        val result = repository.save(preset)
+        assertTrue(result.isSuccess)
+
+        val loaded = repository.load("LV2 Round Trip")
+        assertEquals(preset, loaded)
+        assertEquals("lv2:http://example.org/fake", loaded?.chain?.effectUnits?.get(0)?.type)
+    }
+
+    @Test
     fun savedFileUsesSanitizedFileName() = runBlocking {
         repository.save(Preset.create(name = "My Preset!!"))
         assertTrue(File(tempDir, "My_Preset__.json").exists())
