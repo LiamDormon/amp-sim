@@ -20,282 +20,286 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
       </object>
     </child>
     <property name="content">
-      <object class="AdwNavigationSplitView" id="split_view">
-        <property name="sidebar-width-fraction">0.28</property>
-        <property name="min-sidebar-width">200</property>
-        <property name="max-sidebar-width">280</property>
-        <property name="sidebar">
-          <object class="AdwNavigationPage">
-            <property name="title" translatable="yes">Navigation</property>
-            <property name="tag">sidebar</property>
-            <property name="child">
-              <object class="AdwToolbarView">
-                <child type="top">
-                  <object class="AdwHeaderBar">
-                    <property name="show-end-title-buttons">false</property>
-                    <child type="start">
-                      <object class="GtkMenuButton">
-                        <property name="icon-name">open-menu-symbolic</property>
-                        <property name="primary">true</property>
-                        <property name="menu-model">primary_menu</property>
-                        <property name="tooltip-text" translatable="yes">Main Menu</property>
-                        <property name="accessible-role">3</property>
-                        <accessibility>
-                          <property name="label" translatable="yes">Main Menu</property>
-                          <property name="description" translatable="yes">Open preferences, keyboard shortcuts, and about</property>
-                        </accessibility>
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwNavigationSplitView" id="split_view">
+            <property name="sidebar-width-fraction">0.28</property>
+            <property name="min-sidebar-width">200</property>
+            <property name="max-sidebar-width">280</property>
+            <property name="sidebar">
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Navigation</property>
+                <property name="tag">sidebar</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <property name="show-end-title-buttons">false</property>
+                        <child type="start">
+                          <object class="GtkMenuButton">
+                            <property name="icon-name">open-menu-symbolic</property>
+                            <property name="primary">true</property>
+                            <property name="menu-model">primary_menu</property>
+                            <property name="tooltip-text" translatable="yes">Main Menu</property>
+                            <property name="accessible-role">3</property>
+                            <accessibility>
+                              <property name="label" translatable="yes">Main Menu</property>
+                              <property name="description" translatable="yes">Open preferences, keyboard shortcuts, and about</property>
+                            </accessibility>
+                          </object>
+                        </child>
                       </object>
                     </child>
-                  </object>
-                </child>
-                <property name="content">
-                  <object class="GtkBox">
-                    <property name="orientation">1</property>
-                    <child>
-                      <object class="AdwViewSwitcherSidebar" id="view_sidebar">
-                        <property name="stack">content_stack</property>
-                        <property name="mode">0</property>
-                        <property name="hexpand">true</property>
-                        <property name="vexpand">true</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkSeparator">
-                        <property name="margin-top">6</property>
-                        <property name="margin-bottom">6</property>
-                      </object>
-                    </child>
-                    <child>
+                    <property name="content">
                       <object class="GtkBox">
                         <property name="orientation">1</property>
-                        <property name="spacing">6</property>
-                        <property name="margin-start">6</property>
-                        <property name="margin-end">6</property>
-                        <property name="margin-bottom">6</property>
                         <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Playback</property>
-                            <style>
-                              <class name="caption-heading"/>
-                            </style>
-                            <property name="xalign">0</property>
+                          <object class="AdwViewSwitcherSidebar" id="view_sidebar">
+                            <property name="stack">content_stack</property>
+                            <property name="mode">0</property>
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkSeparator">
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
                           </object>
                         </child>
                         <child>
                           <object class="GtkBox">
-                            <property name="orientation">0</property>
+                            <property name="orientation">1</property>
                             <property name="spacing">6</property>
+                            <property name="margin-start">6</property>
+                            <property name="margin-end">6</property>
+                            <property name="margin-bottom">6</property>
                             <child>
-                              <object class="GtkProgressBar" id="volume_level">
-                                <property name="show-text">false</property>
-                                <property name="pulse-step">0.1</property>
-                                <property name="hexpand">true</property>
-                                <property name="valign">3</property>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Playback</property>
                                 <style>
-                                  <class name="suggested-action"/>
+                                  <class name="caption-heading"/>
                                 </style>
+                                <property name="xalign">0</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkToggleButton" id="playback_toggle">
-                                <property name="icon-name">audio-headphones-symbolic</property>
-                                <property name="hexpand">false</property>
-                                <property name="valign">3</property>
-                                <property name="tooltip-text" translatable="yes">Audio Playback Toggle</property>
-                                <property name="accessible-role">78</property>
-                                <accessibility>
-                                  <property name="label" translatable="yes">Audio Playback Toggle</property>
-                                  <property name="description" translatable="yes">Toggles system audio output on or off</property>
-                                </accessibility>
+                              <object class="GtkBox">
+                                <property name="orientation">0</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkProgressBar" id="volume_level">
+                                    <property name="show-text">false</property>
+                                    <property name="pulse-step">0.1</property>
+                                    <property name="hexpand">true</property>
+                                    <property name="valign">3</property>
+                                    <style>
+                                      <class name="suggested-action"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkToggleButton" id="playback_toggle">
+                                    <property name="icon-name">audio-headphones-symbolic</property>
+                                    <property name="hexpand">false</property>
+                                    <property name="valign">3</property>
+                                    <property name="tooltip-text" translatable="yes">Audio Playback Toggle</property>
+                                    <property name="accessible-role">78</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Audio Playback Toggle</property>
+                                      <property name="description" translatable="yes">Toggles system audio output on or off</property>
+                                    </accessibility>
+                                  </object>
+                                </child>
                               </object>
                             </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="orientation">1</property>
-                        <property name="spacing">6</property>
-                        <property name="margin-start">6</property>
-                        <property name="margin-end">6</property>
-                        <property name="margin-bottom">6</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Noise Gate</property>
-                            <style>
-                              <class name="caption-heading"/>
-                            </style>
-                            <property name="xalign">0</property>
                           </object>
                         </child>
                         <child>
                           <object class="GtkBox">
-                            <property name="orientation">0</property>
+                            <property name="orientation">1</property>
                             <property name="spacing">6</property>
+                            <property name="margin-start">6</property>
+                            <property name="margin-end">6</property>
+                            <property name="margin-bottom">6</property>
                             <child>
-                              <object class="GtkBox" id="noise_gate_dial_container">
-                                <property name="hexpand">true</property>
-                                <property name="valign">3</property>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Noise Gate</property>
+                                <style>
+                                  <class name="caption-heading"/>
+                                </style>
+                                <property name="xalign">0</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkToggleButton" id="noise_gate_toggle">
-                                <property name="icon-name">audio-volume-muted-symbolic</property>
-                                <property name="hexpand">false</property>
-                                <property name="valign">3</property>
-                                <property name="tooltip-text" translatable="yes">Noise Gate Toggle</property>
-                                <property name="accessible-role">78</property>
-                                <accessibility>
-                                  <property name="label" translatable="yes">Noise Gate Toggle</property>
-                                  <property name="description" translatable="yes">Mutes the input below a threshold to tame hiss, hum or feedback</property>
-                                </accessibility>
+                              <object class="GtkBox">
+                                <property name="orientation">0</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkBox" id="noise_gate_dial_container">
+                                    <property name="hexpand">true</property>
+                                    <property name="valign">3</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkToggleButton" id="noise_gate_toggle">
+                                    <property name="icon-name">audio-volume-muted-symbolic</property>
+                                    <property name="hexpand">false</property>
+                                    <property name="valign">3</property>
+                                    <property name="tooltip-text" translatable="yes">Noise Gate Toggle</property>
+                                    <property name="accessible-role">78</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Noise Gate Toggle</property>
+                                      <property name="description" translatable="yes">Mutes the input below a threshold to tame hiss, hum or feedback</property>
+                                    </accessibility>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                           </object>
                         </child>
                       </object>
-                    </child>
+                    </property>
                   </object>
                 </property>
               </object>
             </property>
-          </object>
-        </property>
-        <property name="content">
-          <object class="AdwNavigationPage">
-            <property name="title" translatable="yes">Dashboard</property>
-            <property name="tag">content</property>
-            <property name="child">
-              <object class="AdwToolbarView">
-                <child type="top">
-                  <object class="AdwHeaderBar">
-                    <child type="title">
-                      <object class="AdwWindowTitle" id="preset_title">
-                        <property name="title" translatable="yes">Untitled</property>
-                      </object>
-                    </child>
-                    <child type="end">
-                      <object class="GtkBox">
-                        <property name="orientation">0</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkButton" id="undo_button">
-                            <property name="icon-name">edit-undo-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Undo</property>
-                            <property name="sensitive">false</property>
-                            <property name="accessible-role">3</property>
-                            <accessibility>
-                              <property name="label" translatable="yes">Undo</property>
-                            </accessibility>
+            <property name="content">
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Dashboard</property>
+                <property name="tag">content</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="title">
+                          <object class="AdwWindowTitle" id="preset_title">
+                            <property name="title" translatable="yes">Untitled</property>
                           </object>
                         </child>
-                        <child>
-                          <object class="GtkButton" id="redo_button">
-                            <property name="icon-name">edit-redo-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Redo</property>
-                            <property name="sensitive">false</property>
-                            <property name="accessible-role">3</property>
-                            <accessibility>
-                              <property name="label" translatable="yes">Redo</property>
-                            </accessibility>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkButton" id="save_preset_button">
-                            <property name="icon-name">document-save-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Save Preset</property>
-                            <property name="accessible-role">3</property>
-                            <accessibility>
-                              <property name="label" translatable="yes">Save Preset</property>
-                            </accessibility>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <property name="content">
-                  <object class="AdwViewStack" id="content_stack">
-                    <property name="vexpand">true</property>
-                    <property name="hexpand">true</property>
-                    <child>
-                      <object class="AdwViewStackPage">
-                        <property name="name">dashboard</property>
-                        <property name="title" translatable="yes">Dashboard</property>
-                        <property name="icon-name">view-grid-symbolic</property>
-                        <property name="starts-section">true</property>
-                        <property name="section-title" translatable="yes">Main</property>
-                        <property name="child">
-                          <object class="GtkBox" id="dashboard_host">
-                            <property name="orientation">1</property>
-                            <property name="vexpand">true</property>
-                            <property name="hexpand">true</property>
-                          </object>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="AdwViewStackPage">
-                        <property name="name">editor</property>
-                        <property name="title" translatable="yes">Chain Editor</property>
-                        <property name="icon-name">preferences-system-sharing-symbolic</property>
-                        <property name="child">
-                          <object class="AdwOverlaySplitView" id="chain_split_view">
-                            <property name="sidebar-position">1</property>
-                            <property name="min-sidebar-width">280</property>
-                            <property name="max-sidebar-width">420</property>
-                            <property name="show-sidebar">false</property>
-                            <property name="vexpand">true</property>
-                            <property name="hexpand">true</property>
-                            <property name="content">
-                              <object class="GtkBox" id="chain_editor_host">
-                                <property name="orientation">1</property>
-                                <property name="vexpand">true</property>
-                                <property name="hexpand">true</property>
+                        <child type="end">
+                          <object class="GtkBox">
+                            <property name="orientation">0</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkButton" id="undo_button">
+                                <property name="icon-name">edit-undo-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Undo</property>
+                                <property name="sensitive">false</property>
+                                <property name="accessible-role">3</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Undo</property>
+                                </accessibility>
                               </object>
-                            </property>
-                            <property name="sidebar">
-                              <object class="GtkBox" id="library_host">
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="redo_button">
+                                <property name="icon-name">edit-redo-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Redo</property>
+                                <property name="sensitive">false</property>
+                                <property name="accessible-role">3</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Redo</property>
+                                </accessibility>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="save_preset_button">
+                                <property name="icon-name">document-save-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Save Preset</property>
+                                <property name="accessible-role">3</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Save Preset</property>
+                                </accessibility>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwViewStack" id="content_stack">
+                        <property name="vexpand">true</property>
+                        <property name="hexpand">true</property>
+                        <child>
+                          <object class="AdwViewStackPage">
+                            <property name="name">dashboard</property>
+                            <property name="title" translatable="yes">Dashboard</property>
+                            <property name="icon-name">view-grid-symbolic</property>
+                            <property name="starts-section">true</property>
+                            <property name="section-title" translatable="yes">Main</property>
+                            <property name="child">
+                              <object class="GtkBox" id="dashboard_host">
                                 <property name="orientation">1</property>
                                 <property name="vexpand">true</property>
                                 <property name="hexpand">true</property>
                               </object>
                             </property>
                           </object>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="AdwViewStackPage">
-                        <property name="name">presets</property>
-                        <property name="title" translatable="yes">Presets</property>
-                        <property name="icon-name">folder-open-symbolic</property>
-                        <property name="child">
-                          <object class="GtkBox" id="presets_host">
-                            <property name="orientation">1</property>
-                            <property name="vexpand">true</property>
-                            <property name="hexpand">true</property>
+                        </child>
+                        <child>
+                          <object class="AdwViewStackPage">
+                            <property name="name">editor</property>
+                            <property name="title" translatable="yes">Chain Editor</property>
+                            <property name="icon-name">preferences-system-sharing-symbolic</property>
+                            <property name="child">
+                              <object class="AdwOverlaySplitView" id="chain_split_view">
+                                <property name="sidebar-position">1</property>
+                                <property name="min-sidebar-width">280</property>
+                                <property name="max-sidebar-width">420</property>
+                                <property name="show-sidebar">false</property>
+                                <property name="vexpand">true</property>
+                                <property name="hexpand">true</property>
+                                <property name="content">
+                                  <object class="GtkBox" id="chain_editor_host">
+                                    <property name="orientation">1</property>
+                                    <property name="vexpand">true</property>
+                                    <property name="hexpand">true</property>
+                                  </object>
+                                </property>
+                                <property name="sidebar">
+                                  <object class="GtkBox" id="library_host">
+                                    <property name="orientation">1</property>
+                                    <property name="vexpand">true</property>
+                                    <property name="hexpand">true</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
                           </object>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="AdwViewStackPage">
-                        <property name="name">settings</property>
-                        <property name="title" translatable="yes">Settings</property>
-                        <property name="icon-name">applications-system-symbolic</property>
-                        <property name="starts-section">true</property>
-                        <property name="section-title" translatable="yes">System</property>
-                        <property name="child">
-                          <object class="GtkBox" id="settings_host">
-                            <property name="orientation">1</property>
-                            <property name="vexpand">true</property>
-                            <property name="hexpand">true</property>
+                        </child>
+                        <child>
+                          <object class="AdwViewStackPage">
+                            <property name="name">presets</property>
+                            <property name="title" translatable="yes">Presets</property>
+                            <property name="icon-name">folder-open-symbolic</property>
+                            <property name="child">
+                              <object class="GtkBox" id="presets_host">
+                                <property name="orientation">1</property>
+                                <property name="vexpand">true</property>
+                                <property name="hexpand">true</property>
+                              </object>
+                            </property>
                           </object>
-                        </property>
+                        </child>
+                        <child>
+                          <object class="AdwViewStackPage">
+                            <property name="name">settings</property>
+                            <property name="title" translatable="yes">Settings</property>
+                            <property name="icon-name">applications-system-symbolic</property>
+                            <property name="starts-section">true</property>
+                            <property name="section-title" translatable="yes">System</property>
+                            <property name="child">
+                              <object class="GtkBox" id="settings_host">
+                                <property name="orientation">1</property>
+                                <property name="vexpand">true</property>
+                                <property name="hexpand">true</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
                       </object>
-                    </child>
+                    </property>
                   </object>
                 </property>
               </object>

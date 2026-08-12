@@ -22,7 +22,8 @@ template $AppWindow: Adw.ApplicationWindow {
     }
   }
 
-  content: Adw.NavigationSplitView split_view {
+  content: Adw.ToastOverlay toast_overlay {
+    child: Adw.NavigationSplitView split_view {
     sidebar-width-fraction: 0.28;
     min-sidebar-width: 200;
     max-sidebar-width: 280;
@@ -290,6 +291,7 @@ template $AppWindow: Adw.ApplicationWindow {
           }
         };
       };
+    };
     };
   };
 }

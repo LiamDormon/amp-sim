@@ -55,4 +55,12 @@ interface PresetRepository {
      * caller (e.g. via a file-save dialog). Fails if [name] doesn't exist.
      */
     suspend fun export(name: String, destination: File): Result<Unit>
+
+    /**
+     * Decode and validate [source] (e.g. chosen via a file-open dialog) as a
+     * [Preset], without writing anything to this repository's storage — the
+     * caller decides whether/how to persist it via [save], after resolving
+     * any name conflict against [exists].
+     */
+    suspend fun importFrom(source: File): Result<Preset>
 }

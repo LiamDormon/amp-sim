@@ -34,6 +34,7 @@ private class FakePresetsViewTestRepository(initial: List<PresetSummary> = empty
     override suspend fun rename(oldName: String, newName: String): Result<Unit> = Result.success(Unit)
     override suspend fun duplicate(sourceName: String, newName: String): Result<Unit> = Result.success(Unit)
     override suspend fun export(name: String, destination: File): Result<Unit> = Result.success(Unit)
+    override suspend fun importFrom(source: File): Result<Preset> = Result.failure(UnsupportedOperationException("not used in this fake"))
 }
 
 class PresetsViewTest {
@@ -63,10 +64,11 @@ class PresetsViewTest {
         onRename: (String, String) -> Unit = { _, _ -> },
         onDuplicate: (String, String) -> Unit = { _, _ -> },
         onExport: (String, File) -> Unit = { _, _ -> },
+        onImport: (File) -> Unit = {},
         onDelete: (String) -> Unit = {}
     ): PresetsView {
         val model = PresetsViewModel(repo, recentNames)
-        return PresetsView(model, CoroutineScope(Dispatchers.Unconfined), onLoad, onRename, onDuplicate, onExport, onDelete)
+        return PresetsView(model, CoroutineScope(Dispatchers.Unconfined), onLoad, onRename, onDuplicate, onExport, onImport, onDelete)
     }
 
     // ── Presets display correctly ──────────────────────────────────────────
@@ -261,5 +263,24 @@ class PresetsViewTest {
         view.simulateDeleteConfirmed("A")
 
         assertEquals("A", deleted)
+    }
+
+    // ── Import ────────────────────────────────────────────────────────────
+
+    @Test
+    fun importButtonInvokesOnImportRequestedViaSimulateImport() {
+        var imported: File? = null
+        val view = newView(onImport = { imported = it })
+
+        val file = File("preset.json")
+        view.simulateImport(file)
+
+        assertEquals(file, imported)
+    }
+
+    @Test
+    fun importButtonIsPresentInTheHeader() {
+        val view = newView()
+        assertNotNull(view.importButtonWidget())
     }
 }

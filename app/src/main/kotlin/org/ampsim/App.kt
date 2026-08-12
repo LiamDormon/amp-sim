@@ -20,6 +20,7 @@ import org.ampsim.events.EventBusImpl
 import org.ampsim.events.UIEvent
 import org.ampsim.events.audioStatusChanged
 import org.ampsim.events.chainModified
+import org.ampsim.events.errorOccurred
 import org.ampsim.events.parameterChanged
 import org.ampsim.events.presetLoaded
 import org.ampsim.events.presetSaved
@@ -48,6 +49,7 @@ import org.ampsim.ui.settings.SettingsView
 import org.ampsim.ui.settings.SettingsViewModel
 import org.gnome.gdk.Display
 import org.gnome.gio.Resource
+import java.io.File
 import org.gnome.glib.GLib
 import org.gnome.gtk.CssProvider
 import org.gnome.gtk.Gtk
@@ -361,8 +363,9 @@ class App {
     )
 
     /** Bind the Presets tab's search/filter/context-menu view, loading the clicked preset through [chainManager]. */
-    fun bindPresetsView(window: AppWindow) = window.bindPresetsView(
-        PresetsView(
+    fun bindPresetsView(window: AppWindow) {
+        lateinit var view: PresetsView
+        view = PresetsView(
             model = presetsViewModel,
             scope = uiCoroutineScope,
             onLoadRequested = { name -> loadPresetByName(name) },
@@ -399,6 +402,7 @@ class App {
                     }
                 }
             },
+            onImportRequested = { file -> importPreset(file, view, window) },
             onDeleteRequested = { name ->
                 uiCoroutineScope.launch {
                     val result = presetRepository.delete(name)
@@ -411,7 +415,66 @@ class App {
                 }
             }
         )
-    )
+        window.bindPresetsView(view)
+
+        uiCoroutineScope.launch {
+            eventBus.errorOccurred().collect { event ->
+                GLib.idleAdd(0) {
+                    window.showToast(event.message)
+                    false
+                }
+            }
+        }
+    }
+
+    /**
+     * Decode+validate [file] off the I/O dispatcher; if the decoded preset's
+     * name collides with one already in the library, hand off to [view] to
+     * ask how to resolve it (Overwrite/Rename/Cancel) before writing
+     * anything. Mirrors the existing Save flow: the imported preset is added
+     * to the library but not auto-loaded into the live chain.
+     */
+    private fun importPreset(file: File, view: PresetsView, window: AppWindow) {
+        uiCoroutineScope.launch {
+            val decoded = presetRepository.importFrom(file)
+            val preset = decoded.getOrNull()
+            if (preset == null) {
+                GLib.idleAdd(0) {
+                    eventBus.publish(UIEvent.ErrorOccurred("Import failed: ${decoded.exceptionOrNull()?.message}", "PresetsView"))
+                    false
+                }
+                return@launch
+            }
+            val nameTaken = presetRepository.exists(preset.metadata.name)
+            GLib.idleAdd(0) {
+                if (nameTaken) {
+                    view.promptImportConflict(
+                        existingName = preset.metadata.name,
+                        suggestedName = "${preset.metadata.name} copy",
+                        onOverwrite = { finishImport(preset, window) },
+                        onRename = { newName -> finishImport(preset.copy(metadata = preset.metadata.copy(name = newName)), window) }
+                    )
+                } else {
+                    finishImport(preset, window)
+                }
+                false
+            }
+        }
+    }
+
+    private fun finishImport(preset: Preset, window: AppWindow) {
+        uiCoroutineScope.launch {
+            val result = presetRepository.save(preset)
+            GLib.idleAdd(0) {
+                result.onSuccess {
+                    window.showToast("Imported \"${preset.metadata.name}\"")
+                }.onFailure { e ->
+                    eventBus.publish(UIEvent.ErrorOccurred("Import failed: ${e.message}", "PresetsView"))
+                }
+                false
+            }
+        }
+    }
 
     fun destroy() {
         audioEngine.stop()

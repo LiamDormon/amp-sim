@@ -30,6 +30,7 @@ private class FakePresetRepository(initial: List<PresetSummary> = emptyList()) :
     override suspend fun rename(oldName: String, newName: String): Result<Unit> = Result.success(Unit)
     override suspend fun duplicate(sourceName: String, newName: String): Result<Unit> = Result.success(Unit)
     override suspend fun export(name: String, destination: File): Result<Unit> = Result.success(Unit)
+    override suspend fun importFrom(source: File): Result<Preset> = Result.failure(UnsupportedOperationException("not used in this fake"))
 }
 
 class PresetsViewModelTest {

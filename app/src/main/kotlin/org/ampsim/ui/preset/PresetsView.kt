@@ -19,6 +19,7 @@ import org.gnome.gtk.EventControllerKey
 import org.gnome.gtk.FileDialog
 import org.gnome.gtk.FlowBox
 import org.gnome.gtk.GestureClick
+import org.gnome.gtk.Label
 import org.gnome.gtk.Orientation
 import org.gnome.gtk.PolicyType
 import org.gnome.gtk.Popover
@@ -52,9 +53,15 @@ class PresetsView(
     private val onRenameRequested: (oldName: String, newName: String) -> Unit,
     private val onDuplicateRequested: (sourceName: String, newName: String) -> Unit,
     private val onExportRequested: (name: String, destination: File) -> Unit,
+    private val onImportRequested: (source: File) -> Unit,
     private val onDeleteRequested: (name: String) -> Unit
 ) : Box(Orientation.VERTICAL, ROOT_SPACING) {
 
+    private val importButton = Button.fromIconName("document-open-symbolic").apply {
+        addCssClass("flat")
+        tooltipText = "Import Preset…"
+        setAccessibleLabel("Import preset", "Open a file chooser to import a preset from a JSON file")
+    }
     private val searchEntry = SearchEntry().apply { placeholderText = "Search presets…" }
     private val tagFilterFlow = FlowBox().apply {
         selectionMode = SelectionMode.NONE
@@ -90,11 +97,18 @@ class PresetsView(
         scrolled.vexpand = true
         scrolled.setChild(sectionsBox)
 
+        val headerRow = Box(Orientation.HORIZONTAL, 8).apply {
+            append(Label("Presets").apply { addCssClass("title-2"); hexpand = true; halign = Align.START })
+            append(importButton)
+        }
+
+        append(headerRow)
         append(searchEntry)
         append(tagFilterFlow)
         append(scrolled)
 
         searchEntry.onSearchChanged { model.setSearchQuery(searchEntry.text) }
+        importButton.onClicked { showImportDialog() }
 
         scope.launch {
             model.allTags.collect { tags ->
@@ -273,6 +287,46 @@ class PresetsView(
         }
     }
 
+    private fun showImportDialog() {
+        val window = root as? Window ?: return
+        val fileDialog = FileDialog().apply { title = "Import Preset" }
+        fileDialog.open(window, null) { _, result, _ ->
+            val gioFile: GioFile = runCatching { fileDialog.openFinish(result) }.getOrNull() ?: return@open
+            val path = gioFile.path?.toString() ?: return@open
+            onImportRequested(File(path))
+        }
+    }
+
+    /**
+     * Present the Overwrite/Rename/Cancel conflict prompt for an import whose
+     * decoded preset name collides with [existingName], already in the
+     * library. [onOverwrite]/[onRename] are invoked with the caller's chosen
+     * resolution; actually writing to the repository remains entirely the
+     * caller's job — this method never touches [org.ampsim.persistence.PresetRepository] itself.
+     */
+    internal fun promptImportConflict(
+        existingName: String,
+        suggestedName: String,
+        onOverwrite: () -> Unit,
+        onRename: (newName: String) -> Unit
+    ) {
+        val dialog = AlertDialog(
+            "Preset Already Exists",
+            "A preset named \"$existingName\" already exists. Overwrite it, or import this one under a different name?"
+        )
+        dialog.addResponse("cancel", "Cancel")
+        dialog.addResponse("rename", "Rename…")
+        dialog.addResponse("overwrite", "Overwrite")
+        dialog.setResponseAppearance("overwrite", ResponseAppearance.DESTRUCTIVE)
+        dialog.setDefaultResponse("cancel")
+        dialog.setCloseResponse("cancel")
+        dialog.onResponse("overwrite") { onOverwrite() }
+        dialog.onResponse("rename") {
+            PresetNameDialog("Import As…", "Import", suggestedName) { newName -> onRename(newName) }.present(this)
+        }
+        dialog.present(this)
+    }
+
     /** Test hook: simulate a click of [nPress] presses on the row named [name] (1 = single, 2 = double). */
     internal fun simulateClick(name: String, nPress: Int) {
         if (nPress == 2) onLoadRequested(name)
@@ -319,6 +373,13 @@ class PresetsView(
     internal fun simulateDeleteConfirmed(name: String) {
         onDeleteRequested(name)
     }
+
+    /** Test hook: trigger the import flow directly, bypassing the real [FileDialog] (needs a realized window). */
+    internal fun simulateImport(file: File) {
+        onImportRequested(file)
+    }
+
+    internal fun importButtonWidget(): Button = importButton
 
     internal fun modelForTest(): PresetsViewModel = model
     internal fun rowNamesInAllSection(): List<String> = allRows.map { it.row.name }

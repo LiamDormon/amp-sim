@@ -267,4 +267,70 @@ class FileSystemPresetRepositoryTest {
         assertTrue(result.isFailure)
         assertTrue(!destination.exists())
     }
+
+    @Test
+    fun importFromDecodesAValidExternalFile(@TempDir sourceDir: File) = runBlocking {
+        repository.save(Preset.create(name = "Exportable", description = "desc"))
+        val exported = File(sourceDir, "exported.json")
+        repository.export("Exportable", exported)
+
+        val result = repository.importFrom(exported)
+        assertTrue(result.isSuccess)
+        assertEquals("Exportable", result.getOrNull()?.metadata?.name)
+        // importFrom must not silently write anything to the repository's own storage.
+        assertEquals(1, repository.presets.value.size)
+    }
+
+    @Test
+    fun exportedFileCanBeReImportedRoundTrip(@TempDir destinationDir: File) = runBlocking {
+        val original = Preset.create(
+            name = "Roundtrip",
+            description = "desc",
+            effectUnits = listOf(EffectUnit(id = "1", type = "amp", model = "Plexi", parameters = mapOf("gain" to 30f)))
+        )
+        repository.save(original)
+        val exported = File(destinationDir, "roundtrip.json")
+
+        repository.export("Roundtrip", exported)
+        val imported = repository.importFrom(exported)
+
+        assertTrue(imported.isSuccess)
+        assertEquals(original, imported.getOrNull())
+    }
+
+    @Test
+    fun importFromFailsWhenFileDoesNotExist(@TempDir sourceDir: File) = runBlocking {
+        val result = repository.importFrom(File(sourceDir, "missing.json"))
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun importFromFailsGracefullyOnInvalidJson(@TempDir sourceDir: File) = runBlocking {
+        val bad = File(sourceDir, "bad.json")
+        bad.writeText("{ not valid json at all")
+
+        val result = repository.importFrom(bad)
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun importFromFailsWhenRequiredFieldsAreMissing(@TempDir sourceDir: File) = runBlocking {
+        val blankName = File(sourceDir, "blank-name.json")
+        blankName.writeText(
+            """{"version":"1.0","metadata":{"name":"","description":"","created":"2024-01-01T00:00:00Z","modified":"2024-01-01T00:00:00Z","tags":[],"author":null},"chain":{"effectUnits":[]}}"""
+        )
+
+        val result = repository.importFrom(blankName)
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun saveOverwritesAnExistingPresetOfTheSameName() = runBlocking {
+        repository.save(Preset.create(name = "A", description = "first"))
+        repository.save(Preset.create(name = "A", description = "second"))
+
+        val loaded = repository.load("A")
+        assertEquals("second", loaded?.metadata?.description)
+        assertEquals(1, repository.presets.value.count { it.name == "A" })
+    }
 }

@@ -3,6 +3,8 @@ package org.ampsim.ui
 import java.lang.foreign.MemorySegment
 import org.gnome.adw.ApplicationWindow
 import org.gnome.adw.OverlaySplitView
+import org.gnome.adw.Toast
+import org.gnome.adw.ToastOverlay
 import org.gnome.adw.ViewStack
 import org.gnome.adw.ViewSwitcherSidebar
 import org.gnome.adw.WindowTitle
@@ -90,6 +92,15 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "content_stack")
     @JvmField
     var contentStack: ViewStack? = null
+
+    @GtkChild(name = "toast_overlay")
+    @JvmField
+    var toastOverlay: ToastOverlay? = null
+
+    /** Show a transient, non-blocking notification (e.g. "Imported \"Fuzzy Lead\""). */
+    fun showToast(message: String) {
+        toastOverlay?.addToast(Toast(message))
+    }
 
     /** Mount the Chain Editor canvas widget into its host container. */
     fun bindChainEditor(chainEditor: ChainEditor) {

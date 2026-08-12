@@ -3,6 +3,7 @@ package org.ampsim.ui
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AppWindowTest {
@@ -51,5 +52,17 @@ class AppWindowTest {
         window.setUndoRedoAvailability(canUndo = false, canRedo = true)
         assertFalse(window.undoButton!!.sensitive)
         assertTrue(window.redoButton!!.sensitive)
+    }
+
+    @Test
+    fun toastOverlayBindsFromTemplate() {
+        val window = AppWindow()
+        assertNotNull(window.toastOverlay)
+    }
+
+    @Test
+    fun showToastDoesNotThrow() {
+        val window = AppWindow()
+        window.showToast("test")
     }
 }

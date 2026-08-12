@@ -78,12 +78,10 @@ class FileSystemPresetRepository(
             return@withContext null
         }
 
-        val preset = runCatching { json.decodeFromString(Preset.serializer(), text) }.getOrElse {
+        decodePreset(text).getOrElse {
             System.err.println("Failed to parse preset '$name': ${it.message}")
-            return@withContext null
+            null
         }
-
-        preset.takeIf { isValid(it) }
     }
 
     override suspend fun delete(name: String): Result<Unit> = withContext(ioDispatcher) {
@@ -128,6 +126,14 @@ class FileSystemPresetRepository(
         }.onFailure { e -> System.err.println("Failed to export preset '$name': ${e.message}") }
     }
 
+    override suspend fun importFrom(source: File): Result<Preset> = withContext(ioDispatcher) {
+        if (!source.isFile) return@withContext Result.failure(IllegalStateException("File '${source.path}' does not exist"))
+        val text = runCatching { source.readText() }.getOrElse { e ->
+            return@withContext Result.failure(IllegalArgumentException("Could not read '${source.name}': ${e.message}"))
+        }
+        decodePreset(text)
+    }
+
     /** Stop the repository's background scope. Call once on shutdown. */
     fun cancel() = repoScope.cancel()
 
@@ -136,11 +142,18 @@ class FileSystemPresetRepository(
         val files = presetsDir.listFiles { f -> f.isFile && f.extension == "json" && ".tmp-" !in f.name }
             ?: emptyArray()
         _presets.value = files.mapNotNull { f ->
-            runCatching { json.decodeFromString(Preset.serializer(), f.readText()) }
-                .getOrNull()
-                ?.takeIf { isValid(it) }
+            runCatching { f.readText() }.getOrNull()
+                ?.let { decodePreset(it).getOrNull() }
                 ?.let { PresetSummary(it.metadata.name, it.metadata.description, it.metadata.author, it.metadata.modified, it.metadata.tags) }
         }.sortedByDescending { it.modified }
+    }
+
+    /** Decode+validate JSON preset [text]. Shared by [load], [rescan], and [importFrom]. */
+    private fun decodePreset(text: String): Result<Preset> {
+        val preset = runCatching { json.decodeFromString(Preset.serializer(), text) }
+            .getOrElse { return Result.failure(IllegalArgumentException("Not a valid preset file: ${it.message}")) }
+        if (!isValid(preset)) return Result.failure(IllegalArgumentException("Preset is missing a required name or version"))
+        return Result.success(preset)
     }
 
     private fun isValid(preset: Preset): Boolean =
