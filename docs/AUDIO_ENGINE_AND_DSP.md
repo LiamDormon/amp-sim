@@ -20,11 +20,12 @@ reflects the current implementation under
 5. [Real-Time Processing Loop](#real-time-processing-loop)
 6. [DSP Pipeline](#dsp-pipeline)
 7. [DSP Modules](#dsp-modules)
-8. [From Model to Modules](#from-model-to-modules)
-9. [Metering & Status](#metering--status)
-10. [Real-Time Safety Rules](#real-time-safety-rules)
-11. [Error Handling](#error-handling)
-12. [Key Types Reference](#key-types-reference)
+8. [LV2 Plugin Hosting](#lv2-plugin-hosting)
+9. [From Model to Modules](#from-model-to-modules)
+10. [Metering & Status](#metering--status)
+11. [Real-Time Safety Rules](#real-time-safety-rules)
+12. [Error Handling](#error-handling)
+13. [Key Types Reference](#key-types-reference)
 
 ---
 
@@ -70,6 +71,8 @@ graph LR
 | `BaseDSPModule` | `dsp/BaseDSPModule.kt`        | Shared parameter storage, state serialization, buffer validation. |
 | `DSPModuleFactory` | `dsp/DSPModuleFactory.kt`     | Builds fully-initialized modules from model objects, off the audio thread. |
 | `GenericOverdrive` / `GenericAmp` / `GenericDelay` | `dsp/effects/ Generic*.kt`    | The concrete placeholder effects. |
+| `LV2ModuleAdapter` | `dsp/LV2ModuleAdapter.kt`     | Wraps a live LV2 plugin instance as a `DSPModule`; fault-latches on any native failure. |
+| `LV2PluginHost` / `LV2Discovery` / `LV2PluginCache` | `lv2/*.kt`      | Panama-FFI-backed LV2 host: per-instance native buffers/ports, system plugin scan, process-wide cache. |
 | `Chain` / `EffectUnit` | `model/*.kt`                  | Serializable description of a signal chain (the "what"). |
 
 The **model** describes a chain declaratively; the **DSP layer** turns it into
@@ -302,6 +305,48 @@ sized once for `MAX_DELAY_MS = 2000 ms`, so `process` never allocates.
 `getLatencySamples()` returns the current delay time in samples; the others
 report 0.
 
+### LV2ModuleAdapter (`type = "lv2:<plugin URI>"`)
+
+Wraps a live LV2 plugin instance ([`LV2PluginHost`](#lv2-plugin-hosting)) as a
+`DSPModule`. Parameters are the plugin's control ports (named by their LV2
+*symbol*, a spec-stable per-plugin identifier — not the display name, which
+can be reworded across plugin versions). `process()` catches any exception
+from the native call and latches a `faulted` flag: once faulted, every
+subsequent block outputs silence without calling into the plugin again,
+rather than re-triggering the same failure every block. `reset()` calls the
+plugin's `activate`/`deactivate` functions, which LV2 documents as not
+real-time safe — an accepted, bounded-frequency compromise since a reset is
+a rare user action, not a per-block one. `getLatencySamples()`/`getCpuLoad()`
+are not measured for LV2 plugins (return 0) — a known v1 limitation.
+
+`dispose()` frees the plugin's native `Arena` and instance handle; see
+[Real-Time Safety Rules](#real-time-safety-rules) below for why this can
+never happen inline during a chain swap.
+
+---
+
+## LV2 Plugin Hosting
+
+LV2 plugins are hosted via [liblilv](https://gitlab.com/lv2/lilv) (the
+standard LV2 host C library, which does Turtle/RDF manifest parsing,
+discovery, and instantiation) bound through Java 25's Panama FFI
+(`java.lang.foreign`) — not JNI, which this build has no tooling for.
+
+| Component | File | Responsibility |
+|-----------|------|-----------------|
+| `LilvNative` | `lv2/ffi/LilvNative.kt` | Raw symbol-bound `MethodHandle`s for every exported liblilv function. `available` gates every downstream entry point. |
+| `LilvInstanceCalls` | `lv2/ffi/LilvInstanceCalls.kt` | `lilv_instance_connect_port`/`activate`/`run`/`deactivate` are `static inline` in lilv.h and have **no exported symbol** — this replicates the inline C code by reading the plugin's `LV2_Descriptor` function-pointer table directly out of the `LilvInstance*` struct and invoking through it. `run` is bound with `Linker.Option.critical` since it's the one call made from the RT thread. |
+| `LilvWorld` / `LilvPluginRef` / `LilvPortRef` | `lv2/Lilv*.kt` | Memory-safe Kotlin wrappers; no raw `MemorySegment` leaks above this layer. |
+| `LV2PortTopology` | `lv2/LV2PortTopology.kt` | Pure `isSupportedTopology(kinds)`: exactly 1 audio-in + 1 audio-out, no CV/Atom ports — this app is mono end-to-end (v1), so stereo/multi-channel plugins are skipped, not treated as errors. |
+| `LV2Discovery` / `LV2PluginCache` | `lv2/LV2Discovery.kt`, `lv2/LV2PluginCache.kt` | One process-lifetime `LilvWorld` scan (`lilv_world_load_all`, respects `$LV2_PATH`), classifying and caching each plugin. A plugin that's unreadable or fails a throwaway smoke-instantiate is skipped individually, never aborting the whole scan. |
+| `LV2PluginHost` | `lv2/LV2PluginHost.kt` | Owns one live instance: a shared `Arena` (constructed on the control thread, `run()` called from the RT thread — must be `Arena.ofShared`, not confined), pre-allocated native audio/control port buffers, connected once at construction. |
+| `LV2InitTimeout` | `lv2/LV2InitTimeout.kt` | Bounds the world scan and per-plugin instantiation with a timeout on a daemon-thread executor; a timeout abandons (never cancels — Panama gives no safe way to) the in-flight call rather than blocking the caller. |
+
+`LV2PluginCache.refresh()` (a full disk scan) runs once in the background via
+`App.kt`'s `uiCoroutineScope.launch(Dispatchers.IO)` right after
+`audioEngine.start()`, never on the GTK main thread; the Library panel shows
+just the built-ins until it completes.
+
 ---
 
 ## From Model to Modules
@@ -320,12 +365,17 @@ flowchart LR
     Q --> RT["audio thread swaps activeChain"]
 ```
 
-- `DSPModuleFactory.supportedTypes` = `{ "overdrive", "amp", "delay" }`.
-- `create(type)` maps a type string to a fresh module; unknown types return
-  `null`.
+- `DSPModuleFactory.supportedTypes` = `{ "overdrive", "amp", "delay", "reverb", "chorus" }`
+  — the built-ins only. A type prefixed `"lv2:"` (see `LV2PluginInfo.LV2_TYPE_PREFIX`)
+  is dispatched to `LV2ModuleAdapter.create` instead, deliberately kept
+  outside `supportedTypes` so the type is never lower-cased (LV2 URIs are
+  case-sensitive, unlike the built-in branch).
+- `create(type)` maps a type string to a fresh module; unknown types (built-in
+  or an unresolvable LV2 URI) return `null`.
 - `create(unit)` builds the module and applies each stored parameter.
 - `createChain(chain)` maps the chain's **enabled** units to modules, **skipping
-  unknown types** so a malformed preset can't break chain loading.
+  unknown types** so a malformed preset — or an LV2 plugin uninstalled since
+  the preset was saved — can't break chain loading.
 
 `AudioEngine.loadChain(chain)` runs the factory at the current sample rate, then
 enqueues a single `LoadChain` command. The legacy dashboard toggles
@@ -373,6 +423,15 @@ extending the audio path:
    growing without limit.
 6. **Modules must be RT-friendly.** `process` must not allocate; stateful modules
    must implement `reset()` to clear buffers on `ResetChain`.
+7. **Native calls from `process()` must be pre-bound and non-allocating.**
+   `LV2ModuleAdapter`'s native `run()` call is bound to a `MethodHandle`
+   once, at `LV2PluginHost` construction (off the RT thread) — never
+   re-resolved per block. Native resource teardown (`dispose()`, which frees
+   an LV2 plugin's `Arena`) never happens inline during a `LoadChain` swap:
+   `AudioEngine` retires the outgoing chain into a second bounded
+   `LockFreeRingBuffer<List<DSPModule>>` (`retiredModules`, RT thread
+   producer) that the control thread drains via `pollRetiredModules()` on
+   the same 50ms timer that already polls metering — see `App.kt`.
 
 ---
 
@@ -390,6 +449,24 @@ extending the audio path:
 - **Invalid process buffers**: `BaseDSPModule.validateBuffers` returns a failure
   `Result` for negative frame counts or under-sized buffers instead of reading
   out of bounds.
+- **Missing liblilv**: `LilvNative.available` is `false` when the library
+  can't be found; every LV2 entry point (discovery, instantiation) checks it
+  first and degrades to "no LV2 plugins" rather than crashing.
+- **Unsupported/corrupted LV2 plugins**: `LV2Discovery` skips a plugin
+  individually — wrong port topology, unreadable manifest, or a failed
+  smoke-test instantiation — rather than aborting the whole scan, mirroring
+  `DSPModuleFactory.createChain`'s "skip unknown types" behavior.
+- **LV2 instantiation timeout/failure**: `LV2ModuleAdapter.create` bounds
+  `LV2PluginHost` construction with `LV2InitTimeout` and returns `null` on
+  any failure — a preset referencing an uninstalled or slow-to-load plugin
+  degrades exactly like an unknown built-in type.
+- **LV2 runtime faults**: `LV2ModuleAdapter.process()` catches any exception
+  from the native call and latches a `faulted` flag — silence from then on,
+  not a crash, and not a repeated failure every block. This only covers
+  JVM-level failures in the FFI plumbing; it cannot protect against the
+  plugin's native code segfaulting, which terminates the whole JVM process —
+  an inherent risk of hosting any native plugin format, already implicit in
+  running with `--enable-native-access`.
 
 Logging uses `java.util.logging.Logger` throughout the audio engine.
 
@@ -407,6 +484,9 @@ Logging uses `java.util.logging.Logger` throughout the audio engine.
 | `AudioStatus` | data class | Immutable state + metering snapshot for the UI. |
 | `DSPModule` | interface | Effect contract: `process`, parameters, `reset`, state, latency/CPU. |
 | `BaseDSPModule` | abstract class | Shared parameter map, state (de)serialization, buffer validation; `DEFAULT_SAMPLE_RATE = 48000`. |
-| `DSPModuleFactory` | object | Builds modules from `EffectUnit`/`Chain` off the audio thread. |
+| `DSPModuleFactory` | object | Builds modules from `EffectUnit`/`Chain` off the audio thread; dispatches `"lv2:"`-prefixed types to `LV2ModuleAdapter.create`. |
+| `LV2ModuleAdapter` | class | `DSPModule` wrapping a live LV2 plugin instance; fault-latches on any native failure. |
+| `LV2PluginHost` | class | Owns one live liblilv instance: shared `Arena`, pre-allocated native port buffers. |
+| `LV2Discovery` / `LV2PluginCache` | object | System LV2 plugin scan (via liblilv) and its process-wide cache. |
 | `ParameterInfo` | data class | Parameter metadata: `min`/`max`/`default`/`unit`, with `clamp`. |
 | `Chain` / `EffectUnit` | data classes | Serializable declarative description of a rig. |

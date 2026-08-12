@@ -5,6 +5,7 @@ import org.ampsim.dsp.effects.GenericChorus
 import org.ampsim.dsp.effects.GenericDelay
 import org.ampsim.dsp.effects.GenericOverdrive
 import org.ampsim.dsp.effects.GenericReverb
+import org.ampsim.lv2.LV2PluginInfo
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 
@@ -23,6 +24,12 @@ object DSPModuleFactory {
     /**
      * Create a bare module for the given [type], or `null` if the type is not
      * recognized.
+     *
+     * Built-in types are matched case-insensitively (via `type.lowercase()`
+     * below); an [LV2PluginInfo.LV2_TYPE_PREFIX]-prefixed type is dispatched
+     * to [LV2ModuleAdapter.create] on the *original*-case [type] string —
+     * LV2 URIs are case-sensitive, so that prefix/URI check must never
+     * lower-case either side, unlike the built-in branch.
      */
     fun create(type: String, sampleRate: Int = BaseDSPModule.DEFAULT_SAMPLE_RATE): DSPModule? =
         when (type.lowercase()) {
@@ -31,7 +38,11 @@ object DSPModuleFactory {
             "delay" -> GenericDelay(sampleRate)
             "reverb" -> GenericReverb(sampleRate)
             "chorus" -> GenericChorus(sampleRate)
-            else -> null
+            else -> if (type.startsWith(LV2PluginInfo.LV2_TYPE_PREFIX)) {
+                LV2ModuleAdapter.create(type.removePrefix(LV2PluginInfo.LV2_TYPE_PREFIX), sampleRate)
+            } else {
+                null
+            }
         }
 
     /**

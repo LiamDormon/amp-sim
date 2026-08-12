@@ -2,8 +2,10 @@ package org.ampsim.ui.chain
 
 import org.ampsim.dsp.DSPModuleFactory
 import org.ampsim.dsp.ModuleCatalog
+import org.ampsim.dsp.ModuleDescriptor
 import org.ampsim.dsp.ParameterInfo
 import org.ampsim.dsp.ParameterKind
+import org.ampsim.lv2.LV2PluginCache
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.ui.Debouncer
@@ -53,6 +55,8 @@ class ChainEditor(
     val model: ChainEditorModel = ChainEditorModel(),
     /** Resolves display names for modules dropped in from the Library panel. */
     private val moduleCatalog: ModuleCatalog = ModuleCatalog.bundled,
+    /** Fallback lookup for a Library drop whose type isn't a built-in — an `"lv2:<uri>"` type. */
+    private val lv2DescriptorLookup: (String) -> ModuleDescriptor? = LV2PluginCache::descriptorFor,
     private val onAddUnitRequested: () -> Unit = {},
     /**
      * Builds the [Debouncer] used to coalesce a continuous parameter's rapid
@@ -501,7 +505,7 @@ class ChainEditor(
      * reaches the audio engine as a whole rebuilt chain.
      */
     private fun onLibraryModuleDropped(type: String, index: Int): Boolean {
-        val descriptor = moduleCatalog.descriptorFor(type) ?: return false
+        val descriptor = moduleCatalog.descriptorFor(type) ?: lv2DescriptorLookup(type) ?: return false
         if (index < 0) return false
         model.addUnit(
             EffectUnit(

@@ -227,6 +227,30 @@ class ChainEditorTest {
     }
 
     @Test
+    fun droppingAnLv2TypeFallsBackToTheLv2Lookup() {
+        val descriptor = ModuleDescriptor("lv2:http://example.org/foo", "Foo Plugin", "LV2 Plugins", "an LV2 plugin")
+        val model = ChainEditorModel(Chain(emptyList()))
+        val editor = ChainEditor(model, libraryCatalog(), lv2DescriptorLookup = { type -> descriptor.takeIf { it.type == type } })
+
+        val added = editor.simulateLibraryDropOnCanvas("lv2:http://example.org/foo")
+
+        assertTrue(added)
+        assertEquals(listOf("lv2:http://example.org/foo"), model.units().map { it.type })
+        assertEquals("Foo Plugin", model.units()[0].model)
+    }
+
+    @Test
+    fun droppingATypeNeitherCatalogNorLv2LookupKnowsIsRejected() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val editor = ChainEditor(model, libraryCatalog(), lv2DescriptorLookup = { null })
+
+        val added = editor.simulateLibraryDropOnCanvas("lv2:http://example.org/nowhere")
+
+        assertFalse(added)
+        assertEquals(1, model.units().size)
+    }
+
+    @Test
     fun theCanvasHasItsOwnDropTargetForLibraryModules() {
         // This target is what catches drops past the last row, and the only
         // target at all when the chain is empty and has no rows to aim at.

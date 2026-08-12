@@ -46,4 +46,12 @@ interface DSPModule {
 
     /** Restore parameter state previously produced by [getState]. */
     fun setState(state: Map<String, Float>)
+
+    /**
+     * Release any non-JVM resources (native handles, file descriptors) this
+     * module owns. No-op by default. Called off the real-time thread once a
+     * module has been fully retired from the active chain — see
+     * [org.ampsim.audio.AudioEngine]'s retired-module disposal queue.
+     */
+    fun dispose() {}
 }
