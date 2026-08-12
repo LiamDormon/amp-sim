@@ -97,9 +97,14 @@ class AppWindow : ApplicationWindow {
     @JvmField
     var toastOverlay: ToastOverlay? = null
 
-    /** Show a transient, non-blocking notification (e.g. "Imported \"Fuzzy Lead\""). */
-    fun showToast(message: String) {
-        toastOverlay?.addToast(Toast(message))
+    /** Show a transient, non-blocking notification (e.g. "Imported \"Fuzzy Lead\""). Optional action button (e.g. "Undo"). */
+    fun showToast(message: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+        val toast = Toast(message)
+        if (actionLabel != null && onAction != null) {
+            toast.buttonLabel = actionLabel
+            toast.onButtonClicked { onAction() }
+        }
+        toastOverlay?.addToast(toast)
     }
 
     /** Mount the Chain Editor canvas widget into its host container. */

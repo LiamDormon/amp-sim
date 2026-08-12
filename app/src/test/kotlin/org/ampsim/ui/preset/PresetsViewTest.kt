@@ -250,16 +250,16 @@ class PresetsViewTest {
         assertEquals("Original" to "Original copy", duplicated)
     }
 
-    // ── Confirm before delete ───────────────────────────────────────────────
+    // ── Delete (now immediate, with undo toast) ────────────────────────────────
 
     @Test
-    fun clickingDeleteInTheContextMenuOpensAConfirmationBeforeCallingOnDeleteRequested() {
+    fun clickingDeleteInTheContextMenuImmediatelyCallsOnDeleteRequested() {
         var deleted: String? = null
         val view = newView(onDelete = { deleted = it })
 
-        // simulateDeleteConfirmed represents the outcome of the user confirming
-        // the AlertDialog; it verifies onDeleteRequested is wired correctly
-        // without needing a realized window to actually present the dialog.
+        // Delete is now immediate (no confirmation dialog); simulateDeleteConfirmed
+        // verifies the callback is wired correctly. The undo toast is handled in
+        // App.kt, not PresetsView.
         view.simulateDeleteConfirmed("A")
 
         assertEquals("A", deleted)

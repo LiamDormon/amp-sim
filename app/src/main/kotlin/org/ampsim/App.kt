@@ -405,9 +405,18 @@ class App {
             onImportRequested = { file -> importPreset(file, view, window) },
             onDeleteRequested = { name ->
                 uiCoroutineScope.launch {
+                    val preset = presetRepository.load(name)
                     val result = presetRepository.delete(name)
                     GLib.idleAdd(0) {
-                        result.onFailure { e ->
+                        result.onSuccess {
+                            window.showToast(
+                                message = "Deleted \"$name\"",
+                                actionLabel = "Undo",
+                                onAction = {
+                                    preset?.let { p -> uiCoroutineScope.launch { presetRepository.save(p) } }
+                                }
+                            )
+                        }.onFailure { e ->
                             eventBus.publish(UIEvent.ErrorOccurred("Delete failed: ${e.message}", "PresetsView"))
                         }
                         false

@@ -245,7 +245,7 @@ class PresetsView(
         rename.onClicked { popover.popdown(); showRenameDialog(name) }
         duplicate.onClicked { popover.popdown(); showDuplicateDialog(name) }
         export.onClicked { popover.popdown(); showExportDialog(name) }
-        delete.onClicked { popover.popdown(); showDeleteConfirmation(name) }
+        delete.onClicked { popover.popdown(); onDeleteRequested(name) }
         return popover
     }
 
@@ -263,16 +263,6 @@ class PresetsView(
         dialog.present(this)
     }
 
-    private fun showDeleteConfirmation(name: String) {
-        val dialog = AlertDialog("Delete Preset?", "This will permanently delete \"$name\". This cannot be undone.")
-        dialog.addResponse("cancel", "Cancel")
-        dialog.addResponse("delete", "Delete")
-        dialog.setResponseAppearance("delete", ResponseAppearance.DESTRUCTIVE)
-        dialog.setDefaultResponse("cancel")
-        dialog.setCloseResponse("cancel")
-        dialog.onResponse("delete") { onDeleteRequested(name) }
-        dialog.present(this)
-    }
 
     private fun showExportDialog(name: String) {
         val window = root as? Window ?: return
