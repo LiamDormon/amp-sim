@@ -64,6 +64,12 @@
 
 @define-color amp_dropzone #62a0ea;
 
+/* Status LED, same token names as dashboard.css's own — @define-color is
+ * scoped per-CssProvider, so that file's tokens aren't visible here and this
+ * is a deliberate, small duplication rather than a new color. */
+@define-color led_green #3ddc72;
+@define-color led_red #f2555a;
+
 /* Named so they're documented tokens rather than bare magic hex scattered
  * through the rules below — these are specifically-tuned contrast-on-accent
  * colors with no direct libadwaita equivalent, so naming them (not a fake
@@ -137,22 +143,72 @@
 
 .chain-unit-chassis {
   background-color: @window_bg_color;
-  background-image: linear-gradient(to bottom, alpha(#fff, 0.14), alpha(#fff, 0.02));
+  /* Radial layer first fakes a brushed-metal highlight catching the light
+   * off-center; the linear layer on top is the existing top-to-bottom sheen. */
+  background-image:
+    radial-gradient(circle at 30% 20%, alpha(#fff, 0.12), transparent 60%),
+    linear-gradient(to bottom, alpha(#fff, 0.14), alpha(#fff, 0.02));
   border: 1px solid alpha(#000, 0.45);
   border-radius: 0.5em;
   box-shadow:
     0 0.1875em 0.3125em alpha(#000, 0.4),
     inset 0 0.0625em 0 alpha(#fff, 0.09);
-  transition: border-color 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+/* Hover reads across the whole card even though the click gesture is scoped
+ * to .chain-unit-row-content (see ChainEditor.kt) — a pedal lights up as a
+ * whole when you reach for it. */
+.chain-unit-row:hover .chain-unit-chassis {
+  border-color: alpha(@window_fg_color, 0.3);
+}
+
+/* Selected: an accent ring layered on top of the resting bevel rather than
+ * replacing it — the same "this is live" language @amp_accent uses
+ * everywhere else in this file (see the header comment's COLOR section). */
+.chain-unit-row--selected .chain-unit-chassis {
+  border-color: alpha(@amp_accent, 0.6);
+  box-shadow:
+    0 0 0 0.125em alpha(@amp_accent, 0.35),
+    0 0.1875em 0.3125em alpha(#000, 0.4),
+    inset 0 0.0625em 0 alpha(#fff, 0.09);
+}
+
+/* Pressed: applied/removed by ChainEditor.kt's click gesture (pressed vs.
+ * released/cancelled) rather than relying on GTK's :active state, since the
+ * gesture lives on a plain Box with no built-in active-state propagation.
+ * Inverts the top bevel highlight for a momentary "pushed in" read, the same
+ * recessed language .chain-unit-params-panel uses at rest. */
+.chain-unit-row--pressed .chain-unit-chassis {
+  box-shadow:
+    0 0.0625em 0.125em alpha(#000, 0.35),
+    inset 0 0.0625em 0.125em alpha(#000, 0.25);
+  transition: box-shadow 80ms ease-out;
 }
 
 .chain-unit-row-content {
   padding: 0.75em 1em;
 }
 
+/* Grip: a distinct tactile pad rather than a bare icon, so the drag handle
+ * reads as its own zone even though the whole card is the actual drag
+ * source (ChainEditor.kt's DragSource is on root, not scoped to this icon). */
 .chain-unit-drag-handle {
   opacity: 0.45;
   color: @window_fg_color;
+  padding: 0.25em;
+  border-radius: 0.25em;
+  background-color: alpha(@window_fg_color, 0.05);
+  cursor: grab;
+  transition: opacity 120ms ease-out, background-color 120ms ease-out;
+}
+
+.chain-unit-drag-handle:hover {
+  opacity: 0.8;
+  background-color: alpha(@window_fg_color, 0.09);
 }
 
 .chain-unit-title {
@@ -162,6 +218,27 @@
 
 .chain-unit-type-badge {
   color: alpha(@window_fg_color, 0.55);
+}
+
+/* Status LED, mirroring dashboard.css's .dashboard-led/--on/--off: unlit is a
+ * dark recess, lit glows in its status color like a real illuminated
+ * indicator. Bound to unit.enabled in ChainEditor.kt — the same signal that
+ * already drives chain-unit-row--bypassed. */
+.chain-unit-led {
+  min-width: 0.5em;
+  min-height: 0.5em;
+  border-radius: 999px;
+  background-color: alpha(#000, 0.4);
+}
+
+.chain-unit-led--on {
+  background-color: @led_green;
+  box-shadow: 0 0 0.4375em 0.0625em alpha(@led_green, 0.75);
+}
+
+.chain-unit-led--off {
+  background-color: @led_red;
+  box-shadow: 0 0 0.3125em 0.0625em alpha(@led_red, 0.5);
 }
 
 /* Bypassed: rail goes dark and the enclosure flattens, so a glance down the

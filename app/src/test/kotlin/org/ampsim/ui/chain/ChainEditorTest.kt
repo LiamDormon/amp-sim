@@ -12,6 +12,9 @@ import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.ui.Debouncer
 import org.ampsim.ui.DialWithEntry
+import org.gnome.adw.Adw
+import org.gnome.adw.ColorScheme
+import org.gnome.adw.StyleManager
 import org.gnome.gtk.DragSource
 import org.gnome.gtk.DropTarget
 import org.gnome.gtk.EventControllerKey
@@ -448,5 +451,113 @@ class ChainEditorTest {
         editor.simulateSelect("1")
 
         assertTrue(editor.expanderFor("1")!!.expanded)
+    }
+
+    // ── Selection highlight, LED, and skeuomorphic styling ───────────────────
+
+    @Test
+    fun selectingARowStylesItAndDeselectsThePreviouslySelectedRow() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit2))))
+
+        editor.simulateSelect("1")
+        assertTrue(editor.isSelected("1"))
+        assertFalse(editor.isSelected("2"))
+
+        editor.simulateSelect("2")
+        assertFalse(editor.isSelected("1"))
+        assertTrue(editor.isSelected("2"))
+    }
+
+    @Test
+    fun aBypassedRowStaysBypassedWhenSelected() {
+        // unit3 starts disabled, so its toggle/LED read bypassed regardless
+        // of selection — the two states are independent style classes.
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit3))))
+
+        editor.simulateSelect("3")
+
+        assertTrue(editor.isSelected("3"))
+        assertFalse(editor.toggleFor("3")!!.active)
+        assertEquals(false, editor.ledStateFor("3"))
+    }
+
+    @Test
+    fun ledReflectsEachUnitsEnabledState() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit3))))
+
+        assertEquals(true, editor.ledStateFor("1"))
+        assertEquals(false, editor.ledStateFor("3"))
+    }
+
+    @Test
+    fun togglingAUnitUpdatesItsLed() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val editor = ChainEditor(model)
+
+        model.setUnitEnabled("1", false)
+        assertEquals(false, editor.ledStateFor("1"))
+
+        model.setUnitEnabled("1", true)
+        assertEquals(true, editor.ledStateFor("1"))
+    }
+
+    // ── Performance and restyling smoke checks ───────────────────────────────
+
+    @Test
+    fun constructingTwentyPlusUnitsStaysFast() {
+        val units = (1..25).map { EffectUnit(id = "unit-$it", type = "overdrive", model = "Unit $it") }
+        val start = System.nanoTime()
+
+        val editor = ChainEditor(ChainEditorModel(Chain(units)))
+
+        val elapsedMs = (System.nanoTime() - start) / 1_000_000
+        assertEquals(25, editor.rowCount())
+        // Construction-cost smoke check, not real frame-rate profiling: this
+        // catches an accidental O(n^2) row-building regression, not actual
+        // 60fps jank, which needs a running compositor to measure.
+        assertTrue(elapsedMs < 2000, "constructing 25 rows took ${elapsedMs}ms")
+    }
+
+    @Test
+    fun togglingColorSchemeRepeatedlyDoesNotCrashOrDisturbRowState() {
+        Adw.init()
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit2))))
+        editor.simulateSelect("1")
+
+        val styleManager = StyleManager.getDefault()
+        val original = styleManager.colorScheme
+        try {
+            repeat(3) {
+                styleManager.colorScheme = ColorScheme.FORCE_LIGHT
+                styleManager.colorScheme = ColorScheme.FORCE_DARK
+                styleManager.colorScheme = ColorScheme.DEFAULT
+            }
+        } finally {
+            styleManager.colorScheme = original
+        }
+
+        // Theme switching is StyleManager's own concern (see App.kt); this
+        // only confirms our row-level style classes survive it undisturbed.
+        assertTrue(editor.isSelected("1"))
+        assertEquals(2, editor.rowCount())
+    }
+
+    @Test
+    fun repeatedlyChangingSelectionAndEnabledStateStaysConsistent() {
+        val units = (1..20).map { EffectUnit(id = "unit-$it", type = "overdrive", model = "Unit $it") }
+        val model = ChainEditorModel(Chain(units))
+        val editor = ChainEditor(model)
+
+        repeat(50) { i ->
+            val id = "unit-${(i % 20) + 1}"
+            editor.simulateSelect(id)
+            model.setUnitEnabled(id, i % 2 == 0)
+        }
+
+        // An honest proxy, not real heap-growth leak detection: confirms
+        // many repeated style changes leave no stray rows and don't throw,
+        // rather than measuring actual memory retention.
+        assertEquals(20, editor.rowCount())
+        assertEquals(20, model.units().size)
     }
 }

@@ -149,6 +149,15 @@ class ChainEditor(
         } else {
             row.root.addCssClass(BYPASSED_CSS_CLASS)
         }
+        // Same signal, driving the LED dot: lit green when the unit is live,
+        // dark red when bypassed.
+        if (unit.enabled) {
+            row.led.removeCssClass(LED_OFF_CSS_CLASS)
+            row.led.addCssClass(LED_ON_CSS_CLASS)
+        } else {
+            row.led.removeCssClass(LED_ON_CSS_CLASS)
+            row.led.addCssClass(LED_OFF_CSS_CLASS)
+        }
         for ((info, control) in row.controls) {
             control.setValueSilently(unit.parameters[info.name] ?: info.default)
         }
@@ -196,6 +205,11 @@ class ChainEditor(
         textBox.append(titleLabel)
         textBox.append(typeRow)
 
+        val led = Box(Orientation.VERTICAL, 0)
+        led.addCssClass("chain-unit-led")
+        led.valign = Align.CENTER
+        led.setAccessibleLabel("${unit.model} status")
+
         val toggle = Switch()
         toggle.addCssClass("chain-unit-toggle")
         toggle.valign = Align.CENTER
@@ -204,6 +218,7 @@ class ChainEditor(
 
         content.append(dragHandle)
         content.append(textBox)
+        content.append(led)
         content.append(toggle)
 
         val parameterInfos = DSPModuleFactory.parametersFor(unit.type)
@@ -251,7 +266,7 @@ class ChainEditor(
         val contextMenu = buildContextMenu(unit.id)
         contextMenu.setParent(root)
 
-        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, contextMenu, content, expander, controls)
+        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, led, contextMenu, content, expander, controls)
 
         toggle.onStateSet { state ->
             model.setUnitEnabled(unit.id, state)
@@ -264,9 +279,18 @@ class ChainEditor(
         // and immediately re-closing the drawer on the same click. content is
         // a sibling of the Expander, not an ancestor, so a click landing on
         // the drawer/title never reaches this controller at all.
+        //
+        // Pressed state is applied/removed directly here rather than relying
+        // on GTK's :active pseudo-class: content is a plain Box, which has no
+        // built-in active-state propagation from a GestureClick press.
         val primaryClickGesture = GestureClick()
         primaryClickGesture.setButton(PRIMARY_BUTTON)
-        primaryClickGesture.onPressed { _, _, _ -> selectRow(row) }
+        primaryClickGesture.onPressed { _, _, _ ->
+            root.addCssClass(PRESSED_CSS_CLASS)
+            selectRow(row)
+        }
+        primaryClickGesture.onReleased { _, _, _ -> root.removeCssClass(PRESSED_CSS_CLASS) }
+        primaryClickGesture.onCancel { root.removeCssClass(PRESSED_CSS_CLASS) }
         content.addController(primaryClickGesture)
 
         val secondaryClickGesture = GestureClick()
@@ -406,13 +430,32 @@ class ChainEditor(
 
     private fun showContextMenu(row: ChainUnitRow) {
         model.selectUnit(row.unitId)
+        applySelectionHighlight()
         row.contextMenu.popup()
     }
 
     /** Select [row] and reveal its parameter drawer, if it has one and it's collapsed. */
     private fun selectRow(row: ChainUnitRow) {
         model.selectUnit(row.unitId)
+        applySelectionHighlight()
         row.expander?.let { if (!it.expanded) it.expanded = true }
+    }
+
+    /**
+     * Sync every row's [SELECTED_CSS_CLASS] to [ChainEditorModel.selectedUnitId].
+     * Needed because [ChainEditorModel.selectUnit] only updates that StateFlow
+     * and doesn't trigger [render] (a selection change isn't a structural
+     * mutation), so nothing else re-applies this class.
+     */
+    private fun applySelectionHighlight() {
+        val selectedId = model.selectedUnitId.value
+        for (row in rowsById.values) {
+            if (row.unitId == selectedId) {
+                row.root.addCssClass(SELECTED_CSS_CLASS)
+            } else {
+                row.root.removeCssClass(SELECTED_CSS_CLASS)
+            }
+        }
     }
 
     private fun onRowDragBegin(unitId: String) {
@@ -520,6 +563,19 @@ class ChainEditor(
     internal fun isDraggingHighlighted(unitId: String): Boolean =
         rowsById[unitId]?.root?.hasCssClass(DRAGGING_CSS_CLASS) == true
 
+    internal fun isSelected(unitId: String): Boolean =
+        rowsById[unitId]?.root?.hasCssClass(SELECTED_CSS_CLASS) == true
+
+    /** True/false for lit/unlit, or `null` if [unitId] has no row. */
+    internal fun ledStateFor(unitId: String): Boolean? {
+        val led = rowsById[unitId]?.led ?: return null
+        return when {
+            led.hasCssClass(LED_ON_CSS_CLASS) -> true
+            led.hasCssClass(LED_OFF_CSS_CLASS) -> false
+            else -> null
+        }
+    }
+
     internal fun contextMenuFor(unitId: String): Popover? = rowsById[unitId]?.contextMenu
 
     internal fun toggleFor(unitId: String): Switch? = rowsById[unitId]?.toggle
@@ -556,6 +612,7 @@ class ChainEditor(
         val titleLabel: Label,
         val typeLabel: Label,
         val toggle: Switch,
+        val led: Box,
         val contextMenu: Popover,
         val headerContent: Box,
         val expander: Expander?,
@@ -574,6 +631,10 @@ class ChainEditor(
         private const val DRAGGING_CSS_CLASS = "chain-unit-row--dragging"
         private const val DROP_TARGET_CSS_CLASS = "chain-unit-row--drop-target"
         private const val BYPASSED_CSS_CLASS = "chain-unit-row--bypassed"
+        private const val SELECTED_CSS_CLASS = "chain-unit-row--selected"
+        private const val PRESSED_CSS_CLASS = "chain-unit-row--pressed"
+        private const val LED_ON_CSS_CLASS = "chain-unit-led--on"
+        private const val LED_OFF_CSS_CLASS = "chain-unit-led--off"
         private const val CANVAS_DROP_TARGET_CSS_CLASS = "chain-editor-canvas--drop-target"
         private const val PARAMETER_UPDATED_CSS_CLASS = "chain-dial-tile--updated"
         private const val PARAMETER_UPDATED_FLASH_MS = 400
