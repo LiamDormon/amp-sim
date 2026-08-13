@@ -1,5 +1,6 @@
 package org.ampsim.ui.dashboard
 
+import kotlin.math.roundToInt
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +77,10 @@ class DashboardView(
     private val loadButton = actionButton("folder-open-symbolic", "Load")
     private val settingsButton = actionButton("applications-system-symbolic", "Settings")
 
+    private val cpuGraph = MetricsGraph("CPU")
+    private val latencyGraph = MetricsGraph("LATENCY")
+    private val memoryGraph = MetricsGraph("MEMORY")
+
     private val patchBayRow = Box(Orientation.HORIZONTAL, 8).apply { addCssClass("dashboard-patch-bay-row") }
     private val patchBayEmptyLabel = Label("No presets saved yet").apply { addCssClass("dashboard-patch-bay-empty") }
     private val patchCards = mutableListOf<Box>()
@@ -87,6 +92,7 @@ class DashboardView(
 
         contentBox.append(buildNameplateStrip())
         contentBox.append(buildInstrumentCluster())
+        contentBox.append(buildMetricsGraphsSection())
         contentBox.append(buildPatchBaySection())
 
         // Wrapped in a vertically-scrolling window (same pattern as
@@ -181,7 +187,24 @@ class DashboardView(
         return panel
     }
 
-    // ── Zone 3: patch bay ───────────────────────────────────────────────────
+    // ── Zone 3: performance history ────────────────────────────────────────
+
+    private fun buildMetricsGraphsSection(): Box {
+        val section = Box(Orientation.VERTICAL, 8).apply { addCssClass("dashboard-metrics-section") }
+        val title = Label("Performance").apply { addCssClass("amp-legend") }
+        title.halign = Align.START
+
+        val graphs = Box(Orientation.HORIZONTAL, 16).apply { addCssClass("dashboard-metrics-graphs-row") }
+        graphs.append(cpuGraph)
+        graphs.append(latencyGraph)
+        graphs.append(memoryGraph)
+
+        section.append(title)
+        section.append(graphs)
+        return section
+    }
+
+    // ── Zone 4: patch bay ───────────────────────────────────────────────────
 
     private fun buildPatchBaySection(): Box {
         val section = Box(Orientation.VERTICAL, 8).apply {
@@ -225,6 +248,16 @@ class DashboardView(
 
         inputMeter.setLevel(state.inputLevel)
         outputMeter.setLevel(state.outputLevel)
+
+        cpuGraph.pushSample(state.cpuLoadPercent / 100f, "${state.cpuLoadPercent}%")
+        // LATENCY_GRAPH_CEILING_MS is a visual full-scale reference for the
+        // plotted fraction only (values beyond it just plot pinned at the
+        // top) — the displayed text always shows the real number.
+        latencyGraph.pushSample(
+            (state.chainLatencyMs / LATENCY_GRAPH_CEILING_MS).toFloat(),
+            "%.1f ms".format(state.chainLatencyMs)
+        )
+        memoryGraph.pushSample(state.heapUsagePercent, "${(state.heapUsagePercent * 100).roundToInt()}%")
     }
 
     private fun renderRecentPresets(summaries: List<PresetSummary>) {
@@ -291,6 +324,9 @@ class DashboardView(
     internal fun outputMeterWidget(): VuMeter = outputMeter
     internal fun cpuMeterWidget(): VuMeter = cpuMeter
     internal fun isCpuMeterVisible(): Boolean = cpuGroup.visible
+    internal fun cpuGraphWidget(): MetricsGraph = cpuGraph
+    internal fun latencyGraphWidget(): MetricsGraph = latencyGraph
+    internal fun memoryGraphWidget(): MetricsGraph = memoryGraph
     internal fun patchCardCount(): Int = patchCards.size
     internal fun isPatchBayEmptyMessageVisible(): Boolean = patchBayEmptyLabel.parent != null
     internal fun patchCardNameText(index: Int): String = (patchCards[index].firstChild as Label).text
@@ -310,5 +346,7 @@ class DashboardView(
 
     companion object {
         private const val ROOT_SPACING = 18
+        /** Visual full-scale reference for the latency graph's plotted fraction — see [renderState]. */
+        private const val LATENCY_GRAPH_CEILING_MS = 50.0
     }
 }

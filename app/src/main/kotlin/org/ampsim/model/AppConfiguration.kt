@@ -52,7 +52,8 @@ data class PresetsConfiguration(
 data class AdvancedConfiguration(
     val enableCPUMonitoring: Boolean = false,
     val latencyCompensation: Boolean = false,
-    val autoSaveIntervalSeconds: Int = 30
+    val autoSaveIntervalSeconds: Int = 30,
+    val logMetricsToFile: Boolean = false
 ) {
     init {
         require(autoSaveIntervalSeconds > 0) { "autoSaveIntervalSeconds must be greater than zero" }

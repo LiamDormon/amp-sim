@@ -19,6 +19,7 @@ data class SettingsState(
     val enableCPUMonitoring: Boolean,
     val latencyCompensation: Boolean,
     val autoSaveIntervalSeconds: Int,
+    val logMetricsToFile: Boolean,
     /** Read-only — JACK owns sample rate/buffer size server-wide; this app cannot set them. */
     val isJackConnected: Boolean,
     val sampleRateHz: Int,
@@ -74,6 +75,7 @@ class SettingsViewModel(
             enableCPUMonitoring = cfg.advanced.enableCPUMonitoring,
             latencyCompensation = cfg.advanced.latencyCompensation,
             autoSaveIntervalSeconds = cfg.advanced.autoSaveIntervalSeconds,
+            logMetricsToFile = cfg.advanced.logMetricsToFile,
             isJackConnected = status.isConnected,
             sampleRateHz = status.sampleRate,
             bufferSizeFrames = status.bufferSize,

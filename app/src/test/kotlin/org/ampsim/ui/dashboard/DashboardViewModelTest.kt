@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.ampsim.audio.AudioStatus
+import org.ampsim.metrics.MetricsSnapshot
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.model.Preset
@@ -24,14 +25,16 @@ class DashboardViewModelTest {
         chain: Chain = Chain(),
         audioStatus: AudioStatus = AudioStatus(),
         recentPresets: List<PresetSummary> = emptyList(),
-        enableCPUMonitoring: Boolean = true
+        enableCPUMonitoring: Boolean = true,
+        metrics: MetricsSnapshot = MetricsSnapshot.EMPTY
     ) = DashboardViewModel(
         activePreset = MutableStateFlow(activePreset),
         lastKnownPresetName = MutableStateFlow(lastKnownPresetName),
         chain = MutableStateFlow(chain),
         audioStatus = MutableStateFlow(audioStatus),
         recentPresets = MutableStateFlow(recentPresets),
-        enableCPUMonitoring = MutableStateFlow(enableCPUMonitoring)
+        enableCPUMonitoring = MutableStateFlow(enableCPUMonitoring),
+        metrics = MutableStateFlow(metrics)
     )
 
     @Test

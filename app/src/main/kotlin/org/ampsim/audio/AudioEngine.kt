@@ -63,6 +63,9 @@ class AudioEngine(
     @Volatile private var outputLevel = 0f
     @Volatile private var cpuLoadEstimate = 0f
 
+    /** Per-module CPU timing for the current [activeChain] generation — see [ChainTimingSnapshot]. */
+    @Volatile private var chainTiming = ChainTimingSnapshot.EMPTY
+
     // ---- Real-time thread owned state (only touched inside process()) -------
 
     @Volatile private var activeChain: List<DSPModule> = emptyList()
@@ -108,17 +111,21 @@ class AudioEngine(
      * on the next block boundary.
      */
     fun loadChain(chain: Chain) {
-        val modules = DSPModuleFactory.createChain(chain, currentSampleRate())
-        enqueue(AudioCommand.LoadChain(modules))
+        val (modules, unitIds) = DSPModuleFactory.createChainWithIds(chain, currentSampleRate())
+        enqueue(AudioCommand.LoadChain(modules, ChainTimingSnapshot(unitIds, FloatArray(modules.size))))
     }
 
     /**
      * Replace the active DSP chain with the given pre-built [modules]. The
      * modules must already be fully initialized; they are applied on the next
-     * block boundary.
+     * block boundary. [unitIds], if given, must be the same size as [modules]
+     * (in the same order) so per-module CPU timing can be reported back
+     * against the right unit — omit it for chains with no unit identity to
+     * report against (e.g. ad hoc test chains).
      */
-    fun loadModules(modules: List<DSPModule>) {
-        enqueue(AudioCommand.LoadChain(modules))
+    fun loadModules(modules: List<DSPModule>, unitIds: List<String> = emptyList()) {
+        val ids = if (unitIds.size == modules.size) unitIds else List(modules.size) { "" }
+        enqueue(AudioCommand.LoadChain(modules, ChainTimingSnapshot(ids, FloatArray(modules.size))))
     }
 
     /**
@@ -129,14 +136,18 @@ class AudioEngine(
      * aren't abruptly cut off.
      */
     fun crossfadeToChain(chain: Chain, fadeDurationMs: Int = DEFAULT_CROSSFADE_MS) {
-        val modules = DSPModuleFactory.createChain(chain, currentSampleRate())
+        val (modules, unitIds) = DSPModuleFactory.createChainWithIds(chain, currentSampleRate())
         val fadeFrames = (currentSampleRate() * fadeDurationMs / 1000f).toInt().coerceAtLeast(1)
-        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames))
+        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames, ChainTimingSnapshot(unitIds, FloatArray(modules.size))))
     }
 
-    /** Cross-fade to pre-built [modules] over [fadeFrames] samples. */
-    fun crossfadeToModules(modules: List<DSPModule>, fadeFrames: Int) {
-        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames))
+    /**
+     * Cross-fade to pre-built [modules] over [fadeFrames] samples. [unitIds],
+     * if given, must be the same size as [modules] — see [loadModules].
+     */
+    fun crossfadeToModules(modules: List<DSPModule>, fadeFrames: Int, unitIds: List<String> = emptyList()) {
+        val ids = if (unitIds.size == modules.size) unitIds else List(modules.size) { "" }
+        enqueue(AudioCommand.CrossfadeToChain(modules, fadeFrames, ChainTimingSnapshot(ids, FloatArray(modules.size))))
     }
 
     /** Whether a crossfade is currently in progress on the audio thread. */
@@ -233,6 +244,19 @@ class AudioEngine(
      * `1.0` means "at or over budget", not literally exactly at it.
      */
     fun getCpuLoad(): Float = cpuLoadEstimate
+
+    /** Per-module CPU load for the current chain generation — one [ChainTimingSnapshot] read, lock-free. */
+    fun getChainTiming(): ChainTimingSnapshot = chainTiming
+
+    /**
+     * Sum of every active module's [org.ampsim.dsp.DSPModule.getLatencySamples],
+     * i.e. the DSP-introduced latency of the current chain (distinct from JACK's
+     * own I/O buffer latency, which callers derive separately from sample rate
+     * and buffer size). Safe to call from the control thread: `activeChain` is
+     * only ever swapped as a whole reference, and [org.ampsim.dsp.DSPModule.getLatencySamples]
+     * is a pure query, not RT-thread-owned mutable state.
+     */
+    fun getTotalLatencySamples(): Int = activeChain.sumOf { it.getLatencySamples() }
 
     /** Number of commands dropped because the queue was full. */
     fun getDroppedCommandCount(): Long = droppedCommands.get()
@@ -343,9 +367,10 @@ class AudioEngine(
      */
     fun restart() {
         val chainSnapshot = activeChain
+        val unitIdsSnapshot = chainTiming.unitIds
         stop()
         start()
-        loadModules(chainSnapshot)
+        loadModules(chainSnapshot, unitIdsSnapshot)
     }
 
     // -------------------------------------------------------------------------
@@ -368,6 +393,9 @@ class AudioEngine(
         }
 
         val processingStartNanos = System.nanoTime()
+        // Hoisted so both the per-module timing below and the whole-block
+        // estimate at the end of this method share one budget calculation.
+        val budgetNanos = framesToCopy.toDouble() / cachedSampleRateHz * 1_000_000_000.0
 
         // Gate the raw input ahead of the chain (and its metering), so a
         // closed gate also silences whatever the chain would otherwise be fed,
@@ -402,13 +430,20 @@ class AudioEngine(
             var dstNew = b
             var srcOld = c
             var dstOld = d
+            val newChainCpu = chainTiming.cpuLoadPerUnit
             runBlocking {
-                for (module in chain) {
-                    module.process(srcNew, dstNew, framesToCopy)
+                for (i in chain.indices) {
+                    val moduleStartNanos = System.nanoTime()
+                    chain[i].process(srcNew, dstNew, framesToCopy)
                     val tmp = srcNew
                     srcNew = dstNew
                     dstNew = tmp
+                    if (i < newChainCpu.size) {
+                        newChainCpu[i] = ((System.nanoTime() - moduleStartNanos) / budgetNanos).toFloat().coerceIn(0f, 1f)
+                    }
                 }
+                // The outgoing chain is transient (decaying out, about to be
+                // retired) — not worth timing per-module.
                 for (module in crossfadeOldChain) {
                     module.process(srcOld, dstOld, framesToCopy)
                     val tmp = srcOld
@@ -443,15 +478,22 @@ class AudioEngine(
 
             // A single runBlocking per block; the DSP modules are RT-friendly
             // and do not actually suspend, so no dispatch/allocation happens per
-            // module inside the loop.
+            // module inside the loop. Each module is individually timed into
+            // chainTiming.cpuLoadPerUnit (a pre-allocated array sized to this
+            // chain generation, written in place — no allocation here).
             var src = a
             var dst = b
+            val perUnitCpu = chainTiming.cpuLoadPerUnit
             runBlocking {
-                for (module in chain) {
-                    module.process(src, dst, framesToCopy)
+                for (i in chain.indices) {
+                    val moduleStartNanos = System.nanoTime()
+                    chain[i].process(src, dst, framesToCopy)
                     val tmp = src
                     src = dst
                     dst = tmp
+                    if (i < perUnitCpu.size) {
+                        perUnitCpu[i] = ((System.nanoTime() - moduleStartNanos) / budgetNanos).toFloat().coerceIn(0f, 1f)
+                    }
                 }
             }
 
@@ -475,7 +517,6 @@ class AudioEngine(
         outputLevel = kotlin.math.sqrt(outputSumSquares / framesToCopy)
 
         val elapsedNanos = System.nanoTime() - processingStartNanos
-        val budgetNanos = framesToCopy.toDouble() / cachedSampleRateHz * 1_000_000_000.0
         cpuLoadEstimate = (elapsedNanos / budgetNanos).toFloat().coerceIn(0f, 1f)
 
         // Clear any frames beyond what we produced.
@@ -502,6 +543,7 @@ class AudioEngine(
                 // would be confusing, so drop it and hard-swap instead.
                 retireChain(crossfadeOldChain)
                 activeChain = command.modules
+                chainTiming = command.timing
                 crossfadeOldChain = emptyList()
                 crossfadeRemainingFrames = 0
             }
@@ -513,6 +555,7 @@ class AudioEngine(
                 if (crossfadeRemainingFrames > 0) retireChain(crossfadeOldChain)
                 crossfadeOldChain = activeChain
                 activeChain = command.modules
+                chainTiming = command.timing
                 crossfadeTotalFrames = command.fadeFrames.coerceAtLeast(1)
                 crossfadeRemainingFrames = crossfadeTotalFrames
             }

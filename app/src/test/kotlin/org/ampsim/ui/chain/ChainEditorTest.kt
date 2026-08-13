@@ -92,6 +92,28 @@ class ChainEditorTest {
         assertEquals(listOf("2"), editor.rowIdsInOrder())
     }
 
+    // ── Per-unit CPU metrics ────────────────────────────────────────────────
+
+    @Test
+    fun updatePerUnitMetricsRendersEachRowsCpuLoadAsAPercentage() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit2))))
+
+        editor.updatePerUnitMetrics(mapOf("1" to 0.25f, "2" to 0.5f))
+
+        assertEquals("25%", editor.cpuLabelTextFor("1"))
+        assertEquals("50%", editor.cpuLabelTextFor("2"))
+    }
+
+    @Test
+    fun updatePerUnitMetricsRendersAPlaceholderForAUnitMissingFromTheMap() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1, unit2))))
+
+        editor.updatePerUnitMetrics(mapOf("1" to 0.1f))
+
+        assertEquals("10%", editor.cpuLabelTextFor("1"))
+        assertEquals("—", editor.cpuLabelTextFor("2"))
+    }
+
     // ── Dragging reorders units ─────────────────────────────────────────────
 
     @Test

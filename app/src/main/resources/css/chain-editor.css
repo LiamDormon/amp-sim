@@ -220,6 +220,12 @@
   color: alpha(@window_fg_color, 0.55);
 }
 
+.chain-unit-cpu-badge {
+  color: alpha(@window_fg_color, 0.4);
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}
+
 /* Status LED, mirroring dashboard.css's .dashboard-led/--on/--off: unlit is a
  * dark recess, lit glows in its status color like a real illuminated
  * indicator. Bound to unit.enabled in ChainEditor.kt — the same signal that
@@ -258,6 +264,10 @@
 
 .chain-unit-row--bypassed .chain-unit-type-badge {
   color: alpha(@window_fg_color, 0.35);
+}
+
+.chain-unit-row--bypassed .chain-unit-cpu-badge {
+  color: alpha(@window_fg_color, 0.25);
 }
 
 /* True-bypass-style LED toggle, in the single accent color, instead of a

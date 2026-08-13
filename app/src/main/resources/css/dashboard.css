@@ -7,7 +7,7 @@
  * buttons or static labels, so the one accent still means something when it
  * appears.
  *
- * Three zones, each doing one job, the same way a rack unit's front plate
+ * Four zones, each doing one job, the same way a rack unit's front plate
  * separates its nameplate from its control surface from its patch bay:
  *
  *   - NAMEPLATE   preset identity + at-a-glance rig state (name, dirty
@@ -16,6 +16,8 @@
  *     PANEL       the CPU ladder, and the quick-action buttons together,
  *                 the way a single hardware unit's face groups its meters
  *                 and buttons rather than scattering them in cards.
+ *   - PERFORMANCE trailing CPU/latency/memory history graphs, one recessed
+ *                 well per metric — see MetricsGraph.kt.
  *   - PATCH BAY   recent presets in a recessed well, cable-jack style,
  *                 scrolling horizontally instead of paging — a handful of
  *                 slots, not a slideshow.
@@ -163,7 +165,34 @@
   font-weight: 600;
 }
 
-/* ── Zone 3: Patch bay ───────────────────────────────────────────────────── */
+/* ── Zone 3: Performance history ─────────────────────────────────────────── */
+
+.dashboard-metrics-graphs-row {
+  padding: 0;
+}
+
+.dashboard-metrics-graph {
+  padding: 0.625em 0.75em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.625em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+.dashboard-metrics-graph-value {
+  font-size: 0.8125em;
+  font-weight: 700;
+  color: @window_fg_color;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}
+
+.dashboard-metrics-graph-canvas {
+  min-width: 8em;
+  min-height: 3.5em;
+}
+
+/* ── Zone 4: Patch bay ───────────────────────────────────────────────────── */
 
 .dashboard-patch-bay-well {
   padding: 0.625em;

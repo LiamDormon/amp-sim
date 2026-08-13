@@ -25,6 +25,10 @@ import org.ampsim.events.parameterChanged
 import org.ampsim.events.presetLoaded
 import org.ampsim.events.presetSaved
 import org.ampsim.lv2.LV2PluginCache
+import org.ampsim.metrics.MetricsFileLogger
+import org.ampsim.metrics.MetricsSampler
+import org.ampsim.metrics.MetricsSmoother
+import org.ampsim.metrics.MetricsSnapshot
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.model.ConfigurationProfile
@@ -95,13 +99,19 @@ class App {
         presetRepository,
         configManager.config.map { it.presets.recentPresets }
     )
+    /** Fed by the 100ms metrics timer in [main], already smoothed via [metricsSmoother] before either the Dashboard or the file logger see it. */
+    val metricsFlow = MutableStateFlow(MetricsSnapshot.EMPTY)
+    private val metricsSmoother = MetricsSmoother()
+    val metricsFileLogger = MetricsFileLogger()
+
     val dashboardViewModel = DashboardViewModel(
         activePreset = chainManager.activePreset,
         lastKnownPresetName = chainManager.lastKnownPresetName,
         chain = chainManager.chain,
         audioStatus = eventBus.audioStatusChanged().map { it.status },
         recentPresets = presetsViewModel.recentPresets,
-        enableCPUMonitoring = configManager.config.map { it.advanced.enableCPUMonitoring }
+        enableCPUMonitoring = configManager.config.map { it.advanced.enableCPUMonitoring },
+        metrics = metricsFlow
     )
 
     /** Populated once at startup (and after any output-device restart) via [refreshAvailableAudioDevices]. */
@@ -221,6 +231,23 @@ class App {
     }
 
     /**
+     * Sample CPU/latency/memory metrics, publish a smoothed snapshot to
+     * [metricsFlow] (feeding the Dashboard graphs) and the metrics log file
+     * when enabled, and return the *raw* per-unit CPU numbers for the Chain
+     * Editor's live per-block badges — those intentionally skip smoothing,
+     * see [MetricsSmoother]'s doc comment for why.
+     */
+    fun sampleAndPublishMetrics(): Map<String, Float> {
+        val raw = MetricsSampler.sample(audioEngine, audioEngine.getStatus())
+        val smoothed = metricsSmoother.smooth(raw)
+        metricsFlow.value = smoothed
+        if (configManager.config.value.advanced.logMetricsToFile) {
+            uiCoroutineScope.launch { metricsFileLogger.logRow(smoothed) }
+        }
+        return raw.perUnitCpuLoad
+    }
+
+    /**
      * Undo the most recent [chainManager] operation. This goes through
      * [ChainManager] directly rather than [chainEditorModel]'s own
      * add/remove/move/setUnitEnabled/setUnitParameter wrappers, so — like
@@ -242,14 +269,24 @@ class App {
         chainEditorModel.notifyExternalChange()
     }
 
+    /**
+     * Retained (not just handed to the window) so the 100ms metrics timer in
+     * [main] can push live per-unit CPU readouts into it — see
+     * [ChainEditor.updatePerUnitMetrics]. Set once by [bindChainEditor],
+     * which [main] always calls before starting that timer.
+     */
+    lateinit var chainEditorView: ChainEditor
+        private set
+
     /** Mount the Chain Editor canvas into the window's editor page. */
-    fun bindChainEditor(window: AppWindow) = window.bindChainEditor(
-        ChainEditor(
+    fun bindChainEditor(window: AppWindow) {
+        chainEditorView = ChainEditor(
             chainEditorModel,
             onAddUnitRequested = { window.setLibraryPanelVisible(true) },
             onToast = { window.showToast(it) }
         )
-    )
+        window.bindChainEditor(chainEditorView)
+    }
 
     /** Mount the Library browser into the Chain Editor page's sidebar. */
     fun bindLibraryView(window: AppWindow) = window.bindLibraryView(
@@ -285,6 +322,9 @@ class App {
             },
             onLatencyCompensationChanged = { enabled ->
                 configManager.updateConfig { it.copy(advanced = it.advanced.copy(latencyCompensation = enabled)) }
+            },
+            onLogMetricsToFileChanged = { enabled ->
+                configManager.updateConfig { it.copy(advanced = it.advanced.copy(logMetricsToFile = enabled)) }
             },
             onAutoSaveIntervalChanged = { seconds ->
                 configManager.updateConfig { it.copy(advanced = it.advanced.copy(autoSaveIntervalSeconds = seconds)) }
@@ -693,6 +733,17 @@ fun main(args: Array<String>) {
             true  // Keep the timeout active
         }
 
+        // Deliberately a separate, slower timer from the 50ms one above
+        // rather than folded into it: this ticket's 100ms cadence is a
+        // requirement of the metrics feature specifically, and coupling it
+        // to the UI-smoothing timer's rate would mean any future change to
+        // that timer's interval silently changes the metrics cadence too.
+        GLib.timeoutAdd(0, 100) {
+            val perUnitCpuLoad = appInstance.sampleAndPublishMetrics()
+            appInstance.chainEditorView.updatePerUnitMetrics(perUnitCpuLoad)
+            true
+        }
+
         appInstance.uiCoroutineScope.launch {
             appInstance.configManager.config.collectLatest { config ->
                 DebugLog.enabled = config.realTime.debugLoggingEnabled
@@ -728,6 +779,16 @@ fun main(args: Array<String>) {
                     }
                     false
                 }
+            }
+        }
+
+        // Starts/stops the metrics CSV log file as the Settings toggle
+        // changes, mirroring how DebugLog's flag is flipped from this same
+        // config collector above — except this one has a real file handle to
+        // open/close rather than just a Volatile flag to flip.
+        appInstance.uiCoroutineScope.launch {
+            appInstance.configManager.config.map { it.advanced.logMetricsToFile }.distinctUntilChanged().collectLatest { enabled ->
+                if (enabled) appInstance.metricsFileLogger.start() else appInstance.metricsFileLogger.stop()
             }
         }
 

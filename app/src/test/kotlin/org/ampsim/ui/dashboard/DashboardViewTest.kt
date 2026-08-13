@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.ampsim.audio.AudioStatus
+import org.ampsim.metrics.MetricsSnapshot
 import org.ampsim.model.Chain
 import org.ampsim.model.Preset
 import org.ampsim.persistence.PresetSummary
@@ -33,7 +34,8 @@ class DashboardViewTest {
         chain = MutableStateFlow(Chain()),
         audioStatus = MutableStateFlow(AudioStatus()),
         recentPresets = MutableStateFlow(emptyList()),
-        enableCPUMonitoring = MutableStateFlow(true)
+        enableCPUMonitoring = MutableStateFlow(true),
+        metrics = MutableStateFlow(MetricsSnapshot.EMPTY)
     )
 
     private fun buildView(

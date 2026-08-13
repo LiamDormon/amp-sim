@@ -34,6 +34,7 @@ class SettingsViewTest {
         onThemeChanged: (String) -> Unit = {},
         onCpuMonitoringChanged: (Boolean) -> Unit = {},
         onLatencyCompensationChanged: (Boolean) -> Unit = {},
+        onLogMetricsToFileChanged: (Boolean) -> Unit = {},
         onAutoSaveIntervalChanged: (Int) -> Unit = {},
         onRtPriorityChanged: (Int) -> Unit = {},
         onCpuAffinityChanged: (Set<Int>) -> Unit = {},
@@ -51,6 +52,7 @@ class SettingsViewTest {
         onThemeChanged = onThemeChanged,
         onCpuMonitoringChanged = onCpuMonitoringChanged,
         onLatencyCompensationChanged = onLatencyCompensationChanged,
+        onLogMetricsToFileChanged = onLogMetricsToFileChanged,
         onAutoSaveIntervalChanged = onAutoSaveIntervalChanged,
         onRtPriorityChanged = onRtPriorityChanged,
         onCpuAffinityChanged = onCpuAffinityChanged,
@@ -72,6 +74,7 @@ class SettingsViewTest {
         enableCPUMonitoring: Boolean = false,
         latencyCompensation: Boolean = false,
         autoSaveIntervalSeconds: Int = 30,
+        logMetricsToFile: Boolean = false,
         isJackConnected: Boolean = true,
         sampleRateHz: Int = 48000,
         bufferSizeFrames: Int = 256,
@@ -87,7 +90,7 @@ class SettingsViewTest {
         profiles: List<ProfileSummary> = emptyList()
     ) = SettingsState(
         inputDeviceId, outputDeviceId, availableInputDevices, availableOutputDevices,
-        backend, theme, enableCPUMonitoring, latencyCompensation, autoSaveIntervalSeconds,
+        backend, theme, enableCPUMonitoring, latencyCompensation, autoSaveIntervalSeconds, logMetricsToFile,
         isJackConnected, sampleRateHz, bufferSizeFrames,
         rtPriority, cpuAffinity, scratchBufferFrames, commandQueueCapacity, retiredQueueCapacity,
         debugLoggingEnabled, rtCapabilitiesAvailable, rtWarning, availableCoreCount, profiles
@@ -226,6 +229,17 @@ class SettingsViewTest {
         view.renderStateForTest(defaultState(latencyCompensation = false))
 
         view.simulateLatencyCompensationToggled(true)
+
+        assertEquals(true, changed)
+    }
+
+    @Test
+    fun togglingLogMetricsToFileInvokesTheCallback() {
+        var changed: Boolean? = null
+        val view = buildView(onLogMetricsToFileChanged = { changed = it })
+        view.renderStateForTest(defaultState(logMetricsToFile = false))
+
+        view.simulateLogMetricsToFileToggled(true)
 
         assertEquals(true, changed)
     }
