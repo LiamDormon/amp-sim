@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.ampsim.audio.AudioStatus
 import org.ampsim.model.AppConfiguration
+import org.ampsim.persistence.ProfileSummary
 import org.gnome.gtk.Gtk
 
 class SettingsViewTest {
@@ -23,7 +24,8 @@ class SettingsViewTest {
         config = MutableStateFlow(AppConfiguration()),
         audioStatus = MutableStateFlow(AudioStatus()),
         availableInputDevices = MutableStateFlow(emptyList()),
-        availableOutputDevices = MutableStateFlow(emptyList())
+        availableOutputDevices = MutableStateFlow(emptyList()),
+        profiles = MutableStateFlow(emptyList())
     )
 
     private fun buildView(
@@ -32,7 +34,15 @@ class SettingsViewTest {
         onThemeChanged: (String) -> Unit = {},
         onCpuMonitoringChanged: (Boolean) -> Unit = {},
         onLatencyCompensationChanged: (Boolean) -> Unit = {},
-        onAutoSaveIntervalChanged: (Int) -> Unit = {}
+        onAutoSaveIntervalChanged: (Int) -> Unit = {},
+        onRtPriorityChanged: (Int) -> Unit = {},
+        onCpuAffinityChanged: (Set<Int>) -> Unit = {},
+        onScratchBufferFramesChanged: (Int) -> Unit = {},
+        onCommandQueueCapacityChanged: (Int) -> Unit = {},
+        onRetiredQueueCapacityChanged: (Int) -> Unit = {},
+        onDebugLoggingChanged: (Boolean) -> Unit = {},
+        onSaveProfileRequested: (String) -> Unit = {},
+        onLoadProfileRequested: (String) -> Unit = {}
     ) = SettingsView(
         model = buildModel(),
         scope = CoroutineScope(Dispatchers.Unconfined),
@@ -41,7 +51,15 @@ class SettingsViewTest {
         onThemeChanged = onThemeChanged,
         onCpuMonitoringChanged = onCpuMonitoringChanged,
         onLatencyCompensationChanged = onLatencyCompensationChanged,
-        onAutoSaveIntervalChanged = onAutoSaveIntervalChanged
+        onAutoSaveIntervalChanged = onAutoSaveIntervalChanged,
+        onRtPriorityChanged = onRtPriorityChanged,
+        onCpuAffinityChanged = onCpuAffinityChanged,
+        onScratchBufferFramesChanged = onScratchBufferFramesChanged,
+        onCommandQueueCapacityChanged = onCommandQueueCapacityChanged,
+        onRetiredQueueCapacityChanged = onRetiredQueueCapacityChanged,
+        onDebugLoggingChanged = onDebugLoggingChanged,
+        onSaveProfileRequested = onSaveProfileRequested,
+        onLoadProfileRequested = onLoadProfileRequested
     )
 
     private fun defaultState(
@@ -56,11 +74,23 @@ class SettingsViewTest {
         autoSaveIntervalSeconds: Int = 30,
         isJackConnected: Boolean = true,
         sampleRateHz: Int = 48000,
-        bufferSizeFrames: Int = 256
+        bufferSizeFrames: Int = 256,
+        rtPriority: Int = 0,
+        cpuAffinity: Set<Int> = emptySet(),
+        scratchBufferFrames: Int = 8192,
+        commandQueueCapacity: Int = 256,
+        retiredQueueCapacity: Int = 16,
+        debugLoggingEnabled: Boolean = false,
+        rtCapabilitiesAvailable: Boolean = true,
+        rtWarning: String? = null,
+        availableCoreCount: Int = 4,
+        profiles: List<ProfileSummary> = emptyList()
     ) = SettingsState(
         inputDeviceId, outputDeviceId, availableInputDevices, availableOutputDevices,
         backend, theme, enableCPUMonitoring, latencyCompensation, autoSaveIntervalSeconds,
-        isJackConnected, sampleRateHz, bufferSizeFrames
+        isJackConnected, sampleRateHz, bufferSizeFrames,
+        rtPriority, cpuAffinity, scratchBufferFrames, commandQueueCapacity, retiredQueueCapacity,
+        debugLoggingEnabled, rtCapabilitiesAvailable, rtWarning, availableCoreCount, profiles
     )
 
     // ── Rendering ───────────────────────────────────────────────────────────
@@ -209,5 +239,140 @@ class SettingsViewTest {
         view.simulateAutoSaveIntervalChanged(120)
 
         assertEquals(120, changed)
+    }
+
+    // ── Real-time / performance ─────────────────────────────────────────────
+
+    @Test
+    fun changingRtPriorityInvokesTheCallback() {
+        var changed: Int? = null
+        val view = buildView(onRtPriorityChanged = { changed = it })
+        view.renderStateForTest(defaultState(rtPriority = 0))
+
+        view.simulateRtPriorityChanged(50)
+
+        assertEquals(50, changed)
+    }
+
+    @Test
+    fun changingScratchBufferFramesInvokesTheCallback() {
+        var changed: Int? = null
+        val view = buildView(onScratchBufferFramesChanged = { changed = it })
+        view.renderStateForTest(defaultState())
+
+        view.simulateScratchBufferFramesChanged(4096)
+
+        assertEquals(4096, changed)
+    }
+
+    @Test
+    fun changingCommandQueueCapacityInvokesTheCallback() {
+        var changed: Int? = null
+        val view = buildView(onCommandQueueCapacityChanged = { changed = it })
+        view.renderStateForTest(defaultState())
+
+        view.simulateCommandQueueCapacityChanged(512)
+
+        assertEquals(512, changed)
+    }
+
+    @Test
+    fun changingRetiredQueueCapacityInvokesTheCallback() {
+        var changed: Int? = null
+        val view = buildView(onRetiredQueueCapacityChanged = { changed = it })
+        view.renderStateForTest(defaultState())
+
+        view.simulateRetiredQueueCapacityChanged(64)
+
+        assertEquals(64, changed)
+    }
+
+    @Test
+    fun togglingDebugLoggingInvokesTheCallback() {
+        var changed: Boolean? = null
+        val view = buildView(onDebugLoggingChanged = { changed = it })
+        view.renderStateForTest(defaultState(debugLoggingEnabled = false))
+
+        view.simulateDebugLoggingToggled(true)
+
+        assertEquals(true, changed)
+    }
+
+    @Test
+    fun rendersOneAffinityCheckButtonPerAvailableCore() {
+        val view = buildView()
+        view.renderStateForTest(defaultState(availableCoreCount = 8))
+
+        assertEquals(8, view.affinityCoreCount())
+    }
+
+    @Test
+    fun togglingAnAffinityCoreInvokesTheCallbackWithTheFullSelection() {
+        var changed: Set<Int>? = null
+        val view = buildView(onCpuAffinityChanged = { changed = it })
+        view.renderStateForTest(defaultState(availableCoreCount = 4, cpuAffinity = emptySet()))
+
+        view.simulateAffinityCoreToggled(2, true)
+
+        assertEquals(setOf(2), changed)
+    }
+
+    @Test
+    fun renderingDoesNotSpuriouslyTriggerAffinityCallback() {
+        var calls = 0
+        val view = buildView(onCpuAffinityChanged = { calls++ })
+
+        view.renderStateForTest(defaultState(availableCoreCount = 4, cpuAffinity = setOf(0)))
+        view.renderStateForTest(defaultState(availableCoreCount = 4, cpuAffinity = setOf(1)))
+
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun rtWarningBannerReflectsStateWarning() {
+        val view = buildView()
+        view.renderStateForTest(defaultState(rtWarning = null))
+        assertFalse(view.isRtWarningBannerRevealed())
+
+        view.renderStateForTest(defaultState(rtWarning = "Insufficient privilege for RT priority 50"))
+        assertTrue(view.isRtWarningBannerRevealed())
+        assertEquals("Insufficient privilege for RT priority 50", view.rtWarningText())
+    }
+
+    // ── Profiles ────────────────────────────────────────────────────────────
+
+    @Test
+    fun loadIsDisabledUntilAProfileIsAvailable() {
+        val view = buildView()
+        view.renderStateForTest(defaultState(profiles = emptyList()))
+
+        assertFalse(view.isLoadProfileEnabled())
+    }
+
+    @Test
+    fun selectingAProfileEnablesLoadAndClickingItInvokesTheCallback() {
+        var loaded: String? = null
+        val view = buildView(onLoadProfileRequested = { loaded = it })
+        view.renderStateForTest(
+            defaultState(profiles = listOf(ProfileSummary("Low Latency", "", kotlin.time.Clock.System.now())))
+        )
+
+        view.simulateProfileSelected(0)
+        assertTrue(view.isLoadProfileEnabled())
+
+        view.simulateLoadProfileClicked()
+
+        assertEquals("Low Latency", loaded)
+    }
+
+    @Test
+    fun requestingASaveInvokesTheCallbackWithTheGivenName() {
+        var saved: String? = null
+        val view = buildView(onSaveProfileRequested = { saved = it })
+        view.renderStateForTest(defaultState())
+
+        view.simulateSaveProfileRequested("My Setup")
+
+        assertEquals("My Setup", saved)
     }
 }

@@ -27,11 +27,16 @@ import org.ampsim.events.presetSaved
 import org.ampsim.lv2.LV2PluginCache
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import org.ampsim.model.ConfigurationProfile
 import org.ampsim.model.Preset
+import org.ampsim.model.RealTimeConfiguration
 import org.ampsim.persistence.AutoSaveService
 import org.ampsim.persistence.ConfigManager
 import org.ampsim.persistence.FileSystemPresetRepository
+import org.ampsim.persistence.FileSystemProfileRepository
 import org.ampsim.persistence.PresetRepository
+import org.ampsim.persistence.ProfileRepository
+import org.ampsim.util.DebugLog
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.AppWindowActionHandlers
 import org.ampsim.ui.buildShortcutsWindow
@@ -67,7 +72,9 @@ private fun placeholderChain(): Chain = Chain(
 )
 
 class App {
-    private val audioEngine = AudioEngine()
+    // getRealTimeConfig is a lambda, not read eagerly: by the time start()/restart()
+    // actually invokes it, configManager (declared below) is fully constructed.
+    private val audioEngine = AudioEngine(getRealTimeConfig = { configManager.config.value.realTime })
     val configManager = ConfigManager(ConfigManager.getOrCreateConfigFilePath())
 
     /**
@@ -100,12 +107,16 @@ class App {
     /** Populated once at startup (and after any output-device restart) via [refreshAvailableAudioDevices]. */
     private val availableInputDevices = MutableStateFlow<List<String>>(emptyList())
     private val availableOutputDevices = MutableStateFlow<List<String>>(emptyList())
+    val profileRepository: ProfileRepository = FileSystemProfileRepository(FileSystemProfileRepository.getOrCreateProfilesDir())
     val settingsViewModel = SettingsViewModel(
         config = configManager.config,
         audioStatus = eventBus.audioStatusChanged().map { it.status },
         availableInputDevices = availableInputDevices,
-        availableOutputDevices = availableOutputDevices
+        availableOutputDevices = availableOutputDevices,
+        profiles = profileRepository.profiles
     )
+    /** Guards the one-time bootstrap restart in [applyInitialRealTimeConfigIfNeeded] that applies a persisted, non-default [RealTimeConfiguration] on cold launch. */
+    private var appliedInitialRealTimeConfig = false
     private val autoSaveRepository: PresetRepository =
         FileSystemPresetRepository(FileSystemPresetRepository.getOrCreateAutoSaveDir())
     val autoSaveService = AutoSaveService(
@@ -277,9 +288,66 @@ class App {
             },
             onAutoSaveIntervalChanged = { seconds ->
                 configManager.updateConfig { it.copy(advanced = it.advanced.copy(autoSaveIntervalSeconds = seconds)) }
-            }
+            },
+            onRtPriorityChanged = { priority ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(rtPriority = priority)) }
+                audioEngine.restart()
+            },
+            onCpuAffinityChanged = { cores ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(cpuAffinity = cores)) }
+                audioEngine.restart()
+            },
+            onScratchBufferFramesChanged = { frames ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(scratchBufferFrames = frames)) }
+                audioEngine.restart()
+            },
+            onCommandQueueCapacityChanged = { capacity ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(commandQueueCapacity = capacity)) }
+                audioEngine.restart()
+            },
+            onRetiredQueueCapacityChanged = { capacity ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(retiredQueueCapacity = capacity)) }
+                audioEngine.restart()
+            },
+            onDebugLoggingChanged = { enabled ->
+                configManager.updateConfig { it.copy(realTime = it.realTime.copy(debugLoggingEnabled = enabled)) }
+            },
+            onSaveProfileRequested = { name -> saveCurrentSettingsAsProfile(window, name) },
+            onLoadProfileRequested = { name -> loadProfile(window, name) }
         )
     )
+
+    private fun saveCurrentSettingsAsProfile(window: AppWindow, name: String) {
+        val profile = ConfigurationProfile.create(name = name, configuration = configManager.config.value)
+        uiCoroutineScope.launch {
+            val result = profileRepository.save(profile)
+            GLib.idleAdd(0) {
+                result.onSuccess {
+                    window.showToast("Saved profile \"$name\"")
+                }.onFailure { e ->
+                    eventBus.publish(UIEvent.ErrorOccurred("Failed to save profile: ${e.message}", "SettingsView"))
+                }
+                false
+            }
+        }
+    }
+
+    private fun loadProfile(window: AppWindow, name: String) {
+        uiCoroutineScope.launch {
+            val profile = profileRepository.load(name)
+            GLib.idleAdd(0) {
+                if (profile != null) {
+                    configManager.updateConfig { profile.configuration }
+                    audioEngine.restart()
+                    refreshAvailableAudioDevices()
+                    window.showToast("Loaded profile \"$name\"")
+                } else {
+                    eventBus.publish(UIEvent.ErrorOccurred("Profile \"$name\" could not be loaded", "SettingsView"))
+                }
+                false
+            }
+        }
+    }
 
     /** Update the volume display. */
     fun updateVolumeDisplay(window: AppWindow) = window.updateVolumeDisplay(audioEngine)
@@ -290,6 +358,19 @@ class App {
      * callback, which applies a live, user-driven selection.
      */
     fun restoreAudioInputDevice(deviceId: String?) = audioEngine.setInputDevice(deviceId)
+
+    /**
+     * Called once, the first time a loaded [org.ampsim.model.RealTimeConfiguration]
+     * is observed (see [appliedInitialRealTimeConfig]'s doc). Restarts the
+     * audio engine only if [rt] differs from defaults, so a persisted,
+     * non-default RT tuning that [audioEngine]'s initial `start()` may have
+     * missed (config load is async, `start()` isn't) still gets applied.
+     */
+    fun applyInitialRealTimeConfigIfNeeded(rt: RealTimeConfiguration) {
+        if (appliedInitialRealTimeConfig) return
+        appliedInitialRealTimeConfig = true
+        if (rt != RealTimeConfiguration()) audioEngine.restart()
+    }
 
     /** Bind the header bar's "Save Preset" button to a [SavePresetDialog], pre-filled from the active preset (if any). */
     fun bindPresetSaving(window: AppWindow) = window.bindPresetSaving { openSavePresetDialog(window) }
@@ -495,6 +576,7 @@ class App {
         configManager.cancel()
         (presetRepository as? FileSystemPresetRepository)?.cancel()
         (autoSaveRepository as? FileSystemPresetRepository)?.cancel()
+        (profileRepository as? FileSystemProfileRepository)?.cancel()
         uiCoroutineScope.cancel()
         eventBus.close()
     }
@@ -613,11 +695,24 @@ fun main(args: Array<String>) {
 
         appInstance.uiCoroutineScope.launch {
             appInstance.configManager.config.collectLatest { config ->
+                DebugLog.enabled = config.realTime.debugLoggingEnabled
                 GLib.idleAdd(0) {
                     mainWindow.setDefaultSize(config.ui.windowWidth, config.ui.windowHeight)
                     appInstance.restoreAudioInputDevice(config.audio.inputDeviceId)
                     false
                 }
+            }
+        }
+
+        // audioEngine.start() (above) runs before configManager's async disk
+        // load may have completed, so a previously-saved non-default
+        // RealTimeConfiguration might not be in effect yet. This applies it
+        // with a one-time restart the first time a loaded config is observed
+        // to differ from defaults — later, user-driven settings changes are
+        // already restarted explicitly by bindSettingsView's own callbacks.
+        appInstance.uiCoroutineScope.launch {
+            appInstance.configManager.config.map { it.realTime }.distinctUntilChanged().collectLatest { rt ->
+                GLib.idleAdd(0) { appInstance.applyInitialRealTimeConfigIfNeeded(rt); false }
             }
         }
 

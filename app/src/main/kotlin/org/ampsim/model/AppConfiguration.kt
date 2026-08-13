@@ -23,8 +23,8 @@ data class AudioConfiguration(
 @Serializable
 data class UIConfiguration(
     val theme: String = "system",
-    val windowHeight: Int = 800,
-    val windowWidth: Int = 1200,
+    val windowHeight: Int = 900,
+    val windowWidth: Int = 1400,
     val windowMaximised: Boolean = false,
     val sidebarCollapsed: Boolean = false
 ) {
@@ -59,10 +59,38 @@ data class AdvancedConfiguration(
     }
 }
 
+/**
+ * Real-time audio engine tuning. `rtPriority`/`cpuAffinity` are applied
+ * best-effort via [org.ampsim.audio.rt.RtCapabilities] — the underlying
+ * syscalls may be unavailable or the process may lack permission, in which
+ * case they're silently skipped and surfaced to the UI as a warning rather
+ * than failing configuration load. `scratchBufferFrames`/`commandQueueCapacity`/
+ * `retiredQueueCapacity` mirror [org.ampsim.audio.AudioEngine]'s internal
+ * pre-allocation sizes and only take effect on the next engine restart.
+ */
+@Serializable
+data class RealTimeConfiguration(
+    val rtPriority: Int = 0,
+    val cpuAffinity: Set<Int> = emptySet(),
+    val scratchBufferFrames: Int = 8192,
+    val commandQueueCapacity: Int = 256,
+    val retiredQueueCapacity: Int = 16,
+    val debugLoggingEnabled: Boolean = false
+) {
+    init {
+        require(rtPriority in 0..99) { "rtPriority must be 0-99" }
+        require(cpuAffinity.all { it >= 0 }) { "cpuAffinity core indices must be non-negative" }
+        require(scratchBufferFrames in 256..65536) { "scratchBufferFrames must be 256-65536" }
+        require(commandQueueCapacity in 16..2048) { "commandQueueCapacity must be 16-2048" }
+        require(retiredQueueCapacity in 1..256) { "retiredQueueCapacity must be 1-256" }
+    }
+}
+
 @Serializable
 data class AppConfiguration(
     val audio: AudioConfiguration = AudioConfiguration(),
     val ui: UIConfiguration = UIConfiguration(),
     val presets: PresetsConfiguration = PresetsConfiguration(),
-    val advanced: AdvancedConfiguration = AdvancedConfiguration()
+    val advanced: AdvancedConfiguration = AdvancedConfiguration(),
+    val realTime: RealTimeConfiguration = RealTimeConfiguration()
 )

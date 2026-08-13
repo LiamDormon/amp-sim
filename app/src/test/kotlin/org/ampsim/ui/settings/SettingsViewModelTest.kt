@@ -13,7 +13,9 @@ import org.ampsim.audio.AudioStatus
 import org.ampsim.model.AdvancedConfiguration
 import org.ampsim.model.AppConfiguration
 import org.ampsim.model.AudioConfiguration
+import org.ampsim.model.RealTimeConfiguration
 import org.ampsim.model.UIConfiguration
+import org.ampsim.persistence.ProfileSummary
 
 class SettingsViewModelTest {
 
@@ -21,12 +23,14 @@ class SettingsViewModelTest {
         config: AppConfiguration = AppConfiguration(),
         audioStatus: AudioStatus = AudioStatus(),
         availableInputDevices: List<String> = emptyList(),
-        availableOutputDevices: List<String> = emptyList()
+        availableOutputDevices: List<String> = emptyList(),
+        profiles: List<ProfileSummary> = emptyList()
     ) = SettingsViewModel(
         config = MutableStateFlow(config),
         audioStatus = MutableStateFlow(audioStatus),
         availableInputDevices = MutableStateFlow(availableInputDevices),
-        availableOutputDevices = MutableStateFlow(availableOutputDevices)
+        availableOutputDevices = MutableStateFlow(availableOutputDevices),
+        profiles = MutableStateFlow(profiles)
     )
 
     @Test
@@ -92,7 +96,8 @@ class SettingsViewModelTest {
             config = MutableStateFlow(AppConfiguration()),
             audioStatus = audioStatusFlow,
             availableInputDevices = MutableStateFlow(emptyList()),
-            availableOutputDevices = MutableStateFlow(emptyList())
+            availableOutputDevices = MutableStateFlow(emptyList()),
+            profiles = MutableStateFlow(emptyList())
         )
 
         val emissions = mutableListOf<SettingsState>()
@@ -124,5 +129,55 @@ class SettingsViewModelTest {
 
         assertEquals(listOf("system:capture_1", "system:capture_2"), state.availableInputDevices)
         assertEquals(listOf("system:playback_1"), state.availableOutputDevices)
+    }
+
+    @Test
+    fun stateReflectsRealTimeConfigFields() = runBlocking {
+        val config = AppConfiguration(
+            realTime = RealTimeConfiguration(
+                rtPriority = 50,
+                cpuAffinity = setOf(0, 2),
+                scratchBufferFrames = 4096,
+                commandQueueCapacity = 512,
+                retiredQueueCapacity = 32,
+                debugLoggingEnabled = true
+            )
+        )
+        val state = model(config = config).state.first()
+
+        assertEquals(50, state.rtPriority)
+        assertEquals(setOf(0, 2), state.cpuAffinity)
+        assertEquals(4096, state.scratchBufferFrames)
+        assertEquals(512, state.commandQueueCapacity)
+        assertEquals(32, state.retiredQueueCapacity)
+        assertEquals(true, state.debugLoggingEnabled)
+    }
+
+    @Test
+    fun stateReflectsRtWarningFromAudioStatus() = runBlocking {
+        val status = AudioStatus(rtWarning = "Insufficient privilege for RT priority 50")
+        val state = model(audioStatus = status).state.first()
+
+        assertEquals("Insufficient privilege for RT priority 50", state.rtWarning)
+    }
+
+    @Test
+    fun stateReflectsProfileListing() = runBlocking {
+        val profiles = listOf(
+            ProfileSummary("Low Latency", "desc", kotlin.time.Clock.System.now()),
+            ProfileSummary("High Quality", "desc", kotlin.time.Clock.System.now())
+        )
+        val state = model(profiles = profiles).state.first()
+
+        assertEquals(2, state.profiles.size)
+        assertEquals("Low Latency", state.profiles[0].name)
+        assertEquals("High Quality", state.profiles[1].name)
+    }
+
+    @Test
+    fun stateExposesAvailableCoreCount() = runBlocking {
+        val state = model().state.first()
+
+        assertEquals(Runtime.getRuntime().availableProcessors(), state.availableCoreCount)
     }
 }

@@ -17,5 +17,7 @@ data class AudioStatus(
     val inputLevel: Float = 0.0f,
     val outputLevel: Float = 0.0f,
     val activeModules: Int = 0,
-    val droppedCommands: Long = 0L
+    val droppedCommands: Long = 0L,
+    /** Non-null if the last engine start failed to apply configured RT priority/CPU affinity — see [AudioEngine.realTimeWarning]. */
+    val rtWarning: String? = null
 )

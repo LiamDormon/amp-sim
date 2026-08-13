@@ -5,6 +5,7 @@ import org.ampsim.ui.LIBRARY_DRAG_PREFIX
 import org.ampsim.ui.libraryDragPayload
 import org.ampsim.ui.parameterTile
 import org.ampsim.ui.setAccessibleLabel
+import org.gnome.adw.Clamp
 import org.gnome.gdk.ContentProvider
 import org.gnome.gdk.DragAction
 import org.gnome.gobject.Value
@@ -110,24 +111,32 @@ class LibraryView(
         append(buildHeader())
         append(searchEntry)
 
-        val scrolled = ScrolledWindow()
-        scrolled.setPolicy(PolicyType.NEVER, PolicyType.AUTOMATIC)
-        scrolled.vexpand = true
-        val listBox = Box(Orientation.VERTICAL, SECTION_SPACING)
-        listBox.append(categoriesBox)
-        listBox.append(emptyLabel)
-        scrolled.setChild(listBox)
-
         // The list sits in a recessed well rather than floating on the panel:
         // it gives the browser an edge, and it makes the space below a short
         // list read as room inside a drawer instead of ambient emptiness.
         val listWell = Box(Orientation.VERTICAL, 0)
         listWell.addCssClass("library-list-well")
-        listWell.vexpand = true
-        listWell.append(scrolled)
-        append(listWell)
+        listWell.append(categoriesBox)
+        listWell.append(emptyLabel)
 
-        append(buildDetailsPanel())
+        // Category list and the details panel below it used to be split across
+        // a scrollable well and an unscrolled tail, so a module with several
+        // parameters (whose FlowBox has no bound on its *minimum* height) could
+        // push the panel's total minimum height past what the split view's
+        // sidebar slot actually has, forcing the whole AppWindow taller than
+        // its available space ("AdwToastOverlay exceeds AppWindow height").
+        // One shared ScrolledWindow around both means the sidebar's minimum
+        // height is just header + search bar — everything else scrolls.
+        val scrollableContent = Box(Orientation.VERTICAL, SECTION_SPACING)
+        scrollableContent.append(listWell)
+        scrollableContent.append(buildDetailsPanel())
+
+        val scrolled = ScrolledWindow()
+        scrolled.setPolicy(PolicyType.NEVER, PolicyType.AUTOMATIC)
+        scrolled.vexpand = true
+        scrolled.hexpand = true
+        scrolled.setChild(scrollableContent)
+        append(scrolled)
 
         searchEntry.onSearchChanged { model.setSearchQuery(searchEntry.text) }
 
@@ -185,7 +194,23 @@ class LibraryView(
         detailsBox.append(detailsDescription)
         detailsBox.append(paramsPanel)
         detailsBox.append(specs)
-        return detailsBox
+
+        // detailsParameters (a wrapping FlowBox of dial tiles, unbounded
+        // maxChildrenPerLine) still reports its *natural* size as every tile
+        // laid out in one row unless something bounds the width it's measured
+        // against — the same class of bug fixed once already in
+        // ChainEditor.kt's Clamp-around-rowsBox and SettingsView.kt's
+        // Clamp-around-contentBox (see the comment there). Without this, a
+        // module with several parameters forces the whole library sidebar —
+        // and, since Adw.ViewStack pages share size negotiation, potentially
+        // any other page too — past its intended width ("AdwToastOverlay
+        // exceeds AppWindow width"). Capped a bit under the sidebar's own
+        // max-sidebar-width (420, see mainwindow.blp) to leave room for the
+        // split view's own padding.
+        return Clamp().apply {
+            maximumSize = DETAILS_MAX_WIDTH
+            setChild(detailsBox)
+        }
     }
 
     /** A measured value printed against its label, so two modules compare by eye. */
@@ -413,6 +438,8 @@ class LibraryView(
         private const val SECTION_SPACING = 0
         private const val ROW_SPACING = 0
         private const val DETAILS_SPACING = 8
+        /** Kept a bit under the sidebar's own max-sidebar-width (420, mainwindow.blp) to leave room for padding. */
+        private const val DETAILS_MAX_WIDTH = 380
         private const val PRIMARY_BUTTON = 1
         private const val DRAGGING_CSS_CLASS = "library-row--dragging"
         internal const val CLOSE_BUTTON_NAME = "library-close-button"

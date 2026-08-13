@@ -4,7 +4,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.ampsim.audio.AudioStatus
+import org.ampsim.audio.rt.RtCapabilities
 import org.ampsim.model.AppConfiguration
+import org.ampsim.persistence.ProfileSummary
 
 /** Everything the Settings tab renders, derived from [SettingsViewModel.state]. */
 data class SettingsState(
@@ -20,7 +22,19 @@ data class SettingsState(
     /** Read-only — JACK owns sample rate/buffer size server-wide; this app cannot set them. */
     val isJackConnected: Boolean,
     val sampleRateHz: Int,
-    val bufferSizeFrames: Int
+    val bufferSizeFrames: Int,
+    val rtPriority: Int,
+    val cpuAffinity: Set<Int>,
+    val scratchBufferFrames: Int,
+    val commandQueueCapacity: Int,
+    val retiredQueueCapacity: Int,
+    val debugLoggingEnabled: Boolean,
+    /** Whether [RtCapabilities] resolved at all on this platform (governs whether the RT controls are shown as usable). */
+    val rtCapabilitiesAvailable: Boolean,
+    /** Non-null if the last engine start failed to apply RT priority/CPU affinity — see [AudioStatus.rtWarning]. */
+    val rtWarning: String?,
+    val availableCoreCount: Int,
+    val profiles: List<ProfileSummary>
 )
 
 /**
@@ -37,7 +51,8 @@ class SettingsViewModel(
     config: Flow<AppConfiguration>,
     audioStatus: Flow<AudioStatus>,
     availableInputDevices: Flow<List<String>>,
-    availableOutputDevices: Flow<List<String>>
+    availableOutputDevices: Flow<List<String>>,
+    profiles: Flow<List<ProfileSummary>>
 ) {
     // distinctUntilChanged() matters here: [audioStatus] is republished at
     // ~20 Hz (see App's GLib.timeoutAdd) carrying cpuLoad/meter levels that
@@ -47,8 +62,8 @@ class SettingsViewModel(
     // their selection up to 20 times a second, closing any open popover out
     // from under a click.
     val state: Flow<SettingsState> = combine(
-        config, audioStatus, availableInputDevices, availableOutputDevices
-    ) { cfg, status, inputs, outputs ->
+        config, audioStatus, availableInputDevices, availableOutputDevices, profiles
+    ) { cfg, status, inputs, outputs, profileList ->
         SettingsState(
             inputDeviceId = cfg.audio.inputDeviceId,
             outputDeviceId = cfg.audio.outputDeviceId,
@@ -61,7 +76,17 @@ class SettingsViewModel(
             autoSaveIntervalSeconds = cfg.advanced.autoSaveIntervalSeconds,
             isJackConnected = status.isConnected,
             sampleRateHz = status.sampleRate,
-            bufferSizeFrames = status.bufferSize
+            bufferSizeFrames = status.bufferSize,
+            rtPriority = cfg.realTime.rtPriority,
+            cpuAffinity = cfg.realTime.cpuAffinity,
+            scratchBufferFrames = cfg.realTime.scratchBufferFrames,
+            commandQueueCapacity = cfg.realTime.commandQueueCapacity,
+            retiredQueueCapacity = cfg.realTime.retiredQueueCapacity,
+            debugLoggingEnabled = cfg.realTime.debugLoggingEnabled,
+            rtCapabilitiesAvailable = RtCapabilities.available,
+            rtWarning = status.rtWarning,
+            availableCoreCount = RtCapabilities.availableCoreCount(),
+            profiles = profileList
         )
     }.distinctUntilChanged()
 }

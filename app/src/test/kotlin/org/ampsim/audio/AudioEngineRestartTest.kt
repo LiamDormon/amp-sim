@@ -2,8 +2,10 @@ package org.ampsim.audio
 
 import java.nio.FloatBuffer
 import org.ampsim.dsp.effects.GenericAmp
+import org.ampsim.model.RealTimeConfiguration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** In-memory fake, no real JACK server — only what [AudioEngine] actually calls. */
@@ -107,5 +109,52 @@ class AudioEngineRestartTest {
 
         assertEquals("system:capture_2", fake.lastRoutedInput)
         assertTrue(fake.callOrder.none { it == "open" || it == "close" }, "input routing must not restart the client, got ${fake.callOrder}")
+    }
+
+    // ---- Real-time configuration -------------------------------------------
+
+    @Test
+    fun startUsesDefaultQueueCapacitiesWhenConfigIsDefault() {
+        val fake = FakeAudioClient()
+        val engine = AudioEngine(fake)
+        engine.start()
+
+        assertEquals(256, engine.getCommandQueueCapacity())
+        assertEquals(16, engine.getRetiredQueueCapacity())
+    }
+
+    @Test
+    fun startReallocatesQueuesToTheConfiguredCapacity() {
+        val fake = FakeAudioClient()
+        var config = RealTimeConfiguration(commandQueueCapacity = 512, retiredQueueCapacity = 32)
+        val engine = AudioEngine(fake, getRealTimeConfig = { config })
+
+        engine.start()
+
+        assertEquals(512, engine.getCommandQueueCapacity())
+        assertEquals(32, engine.getRetiredQueueCapacity())
+    }
+
+    @Test
+    fun restartAppliesAnUpdatedQueueCapacity() {
+        val fake = FakeAudioClient()
+        var config = RealTimeConfiguration()
+        val engine = AudioEngine(fake, getRealTimeConfig = { config })
+        engine.start()
+        assertEquals(256, engine.getCommandQueueCapacity())
+
+        config = RealTimeConfiguration(commandQueueCapacity = 128)
+        engine.restart()
+
+        assertEquals(128, engine.getCommandQueueCapacity())
+    }
+
+    @Test
+    fun realTimeWarningIsNullWhenNoRtSettingsAreConfigured() {
+        val fake = FakeAudioClient()
+        val engine = AudioEngine(fake)
+        engine.start()
+
+        assertNull(engine.realTimeWarning())
     }
 }

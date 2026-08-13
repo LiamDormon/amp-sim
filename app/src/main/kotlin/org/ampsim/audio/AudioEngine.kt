@@ -5,9 +5,11 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlinx.coroutines.runBlocking
+import org.ampsim.audio.rt.RtCapabilities
 import org.ampsim.dsp.DSPModule
 import org.ampsim.dsp.DSPModuleFactory
 import org.ampsim.model.Chain
+import org.ampsim.model.RealTimeConfiguration
 
 /**
  * Real-time audio engine backed by a JACK client.
@@ -24,14 +26,24 @@ import org.ampsim.model.Chain
  * Metering (input/output RMS) is published through `@Volatile` fields, so the UI
  * can read levels without any lock contention with the audio thread.
  */
-class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME)) : JackClient.AudioProcessor {
+class AudioEngine(
+    private val jackClient: AudioClient = JackClient(CLIENT_NAME),
+    private val getRealTimeConfig: () -> RealTimeConfiguration = { RealTimeConfiguration() }
+) : JackClient.AudioProcessor {
 
     @Volatile
     private var status = AudioStatus()
 
-    // ---- Command queue (control threads -> audio thread) --------------------
+    /** Set by [start] if applying [RealTimeConfiguration.rtPriority]/`cpuAffinity` failed; read by the UI. */
+    @Volatile
+    private var rtWarning: String? = null
 
-    private val commandQueue = LockFreeRingBuffer<AudioCommand>(COMMAND_QUEUE_CAPACITY)
+    // ---- Command queue (control threads -> audio thread) --------------------
+    // var, not val: reallocated in start() if the configured capacity
+    // differs from the current queue's, always before jackClient.activate()
+    // so the RT thread is never concurrently reading/writing the old queue.
+
+    private var commandQueue = LockFreeRingBuffer<AudioCommand>(COMMAND_QUEUE_CAPACITY)
     private val droppedCommands = AtomicLong(0)
 
     // ---- Retired-module disposal (audio thread -> control thread) -----------
@@ -39,7 +51,7 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     // native Arena, specifically) must be freed off the RT thread. This queue
     // mirrors commandQueue's direction reversed: the RT thread offers, the
     // control thread polls via pollRetiredModules().
-    private val retiredModules = LockFreeRingBuffer<List<DSPModule>>(RETIRED_QUEUE_CAPACITY)
+    private var retiredModules = LockFreeRingBuffer<List<DSPModule>>(RETIRED_QUEUE_CAPACITY)
     private val retiredModulesOverflowCount = AtomicLong(0)
 
     @Volatile private var inputDeviceId: String? = null
@@ -208,6 +220,12 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
     /** Number of active DSP modules in the current chain. */
     fun getActiveModuleCount(): Int = activeChain.size
 
+    /** Current command-queue capacity — reallocated by [start] if [RealTimeConfiguration.commandQueueCapacity] changes. */
+    fun getCommandQueueCapacity(): Int = commandQueue.capacity
+
+    /** Current retired-module-queue capacity — reallocated by [start] if [RealTimeConfiguration.retiredQueueCapacity] changes. */
+    fun getRetiredQueueCapacity(): Int = retiredModules.capacity
+
     /**
      * Fraction of the real-time budget spent processing the last block, self-measured
      * (via wall-clock timing in [process]) since JACK's own CPU load figure isn't
@@ -247,17 +265,31 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
 
     fun start() {
         try {
+            val rt = getRealTimeConfig()
+
+            // Reallocated here, strictly before jackClient.activate() below,
+            // so the RT thread is never concurrently reading/writing the
+            // queue being replaced.
+            if (commandQueue.capacity != rt.commandQueueCapacity) {
+                commandQueue = LockFreeRingBuffer(rt.commandQueueCapacity)
+            }
+            if (retiredModules.capacity != rt.retiredQueueCapacity) {
+                retiredModules = LockFreeRingBuffer(rt.retiredQueueCapacity)
+            }
+
             jackClient.processor = this
             jackClient.open()
 
             // Pre-allocate scratch buffers before the audio thread starts so the
             // real-time path never has to allocate.
-            preallocateScratch(jackClient.getBufferSize())
+            preallocateScratch(maxOf(jackClient.getBufferSize(), rt.scratchBufferFrames))
 
             jackClient.activate()
 
             noiseGate.sampleRate = currentSampleRate()
             cachedSampleRateHz = currentSampleRate()
+
+            applyRealTimeSettings(rt)
 
             updateStatus()
             applyRouting()
@@ -267,6 +299,27 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
             logger.log(Level.SEVERE, "Failed to start audio engine: ${e.message}", e)
         }
     }
+
+    /**
+     * Best-effort: apply the configured RT priority/CPU affinity to the
+     * calling (control) thread via [RtCapabilities]. This cannot reach
+     * JACK's own callback thread — see [RtCapabilities]'s class doc — so
+     * this is a genuine attempt with real limitations, not decoration.
+     * Failures are recorded in [rtWarning] for the UI rather than thrown.
+     */
+    private fun applyRealTimeSettings(rt: RealTimeConfiguration) {
+        val warnings = mutableListOf<String>()
+        if (rt.rtPriority > 0) {
+            RtCapabilities.applyPriority(rt.rtPriority).onFailure { warnings.add(it.message ?: "Failed to apply RT priority") }
+        }
+        if (rt.cpuAffinity.isNotEmpty()) {
+            RtCapabilities.applyAffinity(rt.cpuAffinity).onFailure { warnings.add(it.message ?: "Failed to apply CPU affinity") }
+        }
+        rtWarning = warnings.takeIf { it.isNotEmpty() }?.joinToString("; ")
+    }
+
+    /** Non-null if the last [start] failed to apply RT priority/CPU affinity — for UI display. */
+    fun realTimeWarning(): String? = rtWarning
 
     fun stop() {
         jackClient.close()
@@ -497,8 +550,14 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
         if (scratchD.size < size) scratchD = FloatArray(size)
     }
 
-    private fun preallocateScratch(bufferSize: Int) {
-        val size = maxOf(bufferSize, DEFAULT_MAX_BLOCK)
+    /**
+     * Grow the scratch buffers to at least [size] frames. [size] is the
+     * caller's already-computed floor (JACK's actual buffer size vs. the
+     * configured [RealTimeConfiguration.scratchBufferFrames], whichever is
+     * larger) — this no longer re-applies [DEFAULT_MAX_BLOCK] on top, so a
+     * deliberately smaller configured value isn't silently overridden.
+     */
+    private fun preallocateScratch(size: Int) {
         if (scratchA.size < size) scratchA = FloatArray(size)
         if (scratchB.size < size) scratchB = FloatArray(size)
         if (scratchC.size < size) scratchC = FloatArray(size)
@@ -521,7 +580,8 @@ class AudioEngine(private val jackClient: AudioClient = JackClient(CLIENT_NAME))
             inputLevel = inputLevel,
             outputLevel = outputLevel,
             activeModules = activeChain.size,
-            droppedCommands = droppedCommands.get()
+            droppedCommands = droppedCommands.get(),
+            rtWarning = rtWarning
         )
     }
 

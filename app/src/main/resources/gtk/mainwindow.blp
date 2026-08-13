@@ -6,8 +6,8 @@ using Gtk 4.0;
 using Adw 1;
 
 template $AppWindow: Adw.ApplicationWindow {
-  default-width: 1200;
-  default-height: 800;
+  default-width: 1400;
+  default-height: 900;
   width-request: 360;
   height-request: 294;
   title: _("Ampsim");
@@ -19,6 +19,22 @@ template $AppWindow: Adw.ApplicationWindow {
     setters {
       split_view.collapsed: true;
       view_sidebar.mode: page;
+    }
+  }
+
+  // Below this width, the nav sidebar (up to 280px) plus the Chain Editor's
+  // library sidebar (min 280px, alongside the canvas when chain_split_view
+  // is uncollapsed) can together demand more than the window actually has,
+  // which is what forced the window wider than available space ("AdwToastOverlay
+  // exceeds AppWindow width") whenever the library was opened on a narrower
+  // window. Collapsing chain_split_view makes the library an overlay drawer
+  // instead of a docked pane, so it floats over the canvas rather than
+  // adding to the width budget.
+  Adw.Breakpoint {
+    condition ("max-width: 900sp")
+
+    setters {
+      chain_split_view.collapsed: true;
     }
   }
 
@@ -215,6 +231,19 @@ template $AppWindow: Adw.ApplicationWindow {
         content: Adw.ViewStack content_stack {
           vexpand: true;
           hexpand: true;
+          // AdwViewStack defaults both of these to true, meaning it sizes
+          // itself to the max natural width/height across EVERY page, not
+          // just whichever one is currently visible — so a single wide/tall
+          // page (e.g. Chain Editor with the Library sidebar open, or a
+          // content-heavy Settings page) forces the whole window, and every
+          // other page along with it, to demand that much space even while
+          // showing something much smaller (this was the actual cause behind
+          // repeated "AdwToastOverlay exceeds AppWindow width/height"
+          // warnings that kept reappearing on a different page after each
+          // individual page's own content was fixed). Explicitly false so
+          // each page is sized on its own terms.
+          hhomogeneous: false;
+          vhomogeneous: false;
           // Page 1 ── Dashboard  (opens group "Main")
           Adw.ViewStackPage {
             name: "dashboard";
