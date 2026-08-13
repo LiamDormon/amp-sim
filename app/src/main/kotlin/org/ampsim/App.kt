@@ -7,6 +7,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -24,6 +25,7 @@ import org.ampsim.events.errorOccurred
 import org.ampsim.events.parameterChanged
 import org.ampsim.events.presetLoaded
 import org.ampsim.events.presetSaved
+import org.ampsim.events.pitchDetected
 import org.ampsim.lv2.LV2PluginCache
 import org.ampsim.metrics.MetricsFileLogger
 import org.ampsim.metrics.MetricsSampler
@@ -34,12 +36,16 @@ import org.ampsim.model.EffectUnit
 import org.ampsim.model.ConfigurationProfile
 import org.ampsim.model.Preset
 import org.ampsim.model.RealTimeConfiguration
+import org.ampsim.model.TunerModeKind
 import org.ampsim.persistence.AutoSaveService
 import org.ampsim.persistence.ConfigManager
 import org.ampsim.persistence.FileSystemPresetRepository
 import org.ampsim.persistence.FileSystemProfileRepository
 import org.ampsim.persistence.PresetRepository
 import org.ampsim.persistence.ProfileRepository
+import org.ampsim.tuner.BuiltInTunings
+import org.ampsim.tuner.TunerMode
+import org.ampsim.tuner.TunerSampler
 import org.ampsim.util.DebugLog
 import org.ampsim.ui.AppWindow
 import org.ampsim.ui.AppWindowActionHandlers
@@ -56,6 +62,8 @@ import org.ampsim.ui.preset.PresetsViewModel
 import org.ampsim.ui.preset.SavePresetDialog
 import org.ampsim.ui.settings.SettingsView
 import org.ampsim.ui.settings.SettingsViewModel
+import org.ampsim.ui.tuner.TunerView
+import org.ampsim.ui.tuner.TunerViewModel
 import org.gnome.gdk.Display
 import org.gnome.gio.Resource
 import java.io.File
@@ -125,6 +133,23 @@ class App {
         availableOutputDevices = availableOutputDevices,
         profiles = profileRepository.profiles
     )
+    /**
+     * [activeTuning] is deliberately a single-element flow today — only
+     * [BuiltInTunings.STANDARD] exists — so swapping in a real user-selected
+     * tuning later is a config/App.kt change only, not a [TunerViewModel]
+     * shape change. Mode/target selection always starts at
+     * [org.ampsim.tuner.TunerMode.Auto] on launch (see the mode-persistence
+     * collector in `main` for why the write side, not the restore side, is
+     * what's wired up for v1).
+     */
+    val tunerViewModel = TunerViewModel(
+        pitchEstimates = eventBus.pitchDetected().map { it.estimate },
+        referencePitch = configManager.config.map { it.tuner.referencePitchHz },
+        activeTuning = flowOf(BuiltInTunings.STANDARD)
+    )
+    private var tunerTabActive = false
+    private var playbackEnabledBeforeTuner = true
+
     /** Guards the one-time bootstrap restart in [applyInitialRealTimeConfigIfNeeded] that applies a persisted, non-default [RealTimeConfiguration] on cold launch. */
     private var appliedInitialRealTimeConfig = false
     private val autoSaveRepository: PresetRepository =
@@ -183,6 +208,24 @@ class App {
                     audioEngine.crossfadeToChain(event.preset.chain)
                     chainEditorModel.notifyExternalChange()
                     false
+                }
+            }
+        }
+
+        // Persist mode/target selection for forward use — restoring it on a
+        // future cold launch isn't wired up yet (config load is async, so a
+        // meaningfully-timed restore would need the same one-time-catch-up
+        // pattern as applyInitialRealTimeConfigIfNeeded; out of scope for
+        // this bare-bones tab, which always opens in Auto mode).
+        uiCoroutineScope.launch {
+            tunerViewModel.mode.collect { mode ->
+                configManager.updateConfig {
+                    it.copy(
+                        tuner = it.tuner.copy(
+                            lastModeKind = if (mode is TunerMode.Manual) TunerModeKind.MANUAL else TunerModeKind.AUTO,
+                            lastManualStringNumber = (mode as? TunerMode.Manual)?.target?.stringNumber
+                        )
+                    )
                 }
             }
         }
@@ -487,6 +530,39 @@ class App {
         )
     )
 
+    /** Mount the Tuner tab, wiring mode/target selection straight into [tunerViewModel]. */
+    fun bindTunerView(window: AppWindow) = window.bindTunerView(
+        TunerView(model = tunerViewModel, scope = uiCoroutineScope)
+    )
+
+    /**
+     * Called when the Tuner tab becomes visible: mutes the chain's audio
+     * output (a tuner needs to be heard tuning, not the effect chain) while
+     * keeping raw-input capture running for pitch detection, and remembers
+     * whatever the playback toggle was set to so [onTunerTabExited] can
+     * restore it exactly.
+     */
+    fun onTunerTabEntered(window: AppWindow) {
+        tunerTabActive = true
+        playbackEnabledBeforeTuner = window.isPlaybackEnabled()
+        audioEngine.setTunerCaptureEnabled(true)
+        audioEngine.setPlaybackEnabled(false)
+    }
+
+    /** Called when the Tuner tab is left: stops capture and restores the playback state from before [onTunerTabEntered]. */
+    fun onTunerTabExited() {
+        tunerTabActive = false
+        audioEngine.setTunerCaptureEnabled(false)
+        audioEngine.setPlaybackEnabled(playbackEnabledBeforeTuner)
+    }
+
+    /** Sample the latest tuner capture window and publish a pitch-detection result. No-ops unless the Tuner tab is currently active. */
+    fun sampleAndPublishTunerPitch() {
+        if (!tunerTabActive) return
+        val estimate = TunerSampler.sample(audioEngine, audioEngine.getStatus().sampleRate)
+        eventBus.publish(UIEvent.PitchDetected(estimate))
+    }
+
     /** Bind the Presets tab's search/filter/context-menu view, loading the clicked preset through [chainManager]. */
     fun bindPresetsView(window: AppWindow) {
         lateinit var view: PresetsView
@@ -680,6 +756,14 @@ fun main(args: Array<String>) {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+        val tunerCssProvider = CssProvider()
+        tunerCssProvider.loadFromResource("/org/ampsim/css/tuner.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            tunerCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         // Backs the hamburger menu's already-present but previously-dead
@@ -694,7 +778,23 @@ fun main(args: Array<String>) {
         appInstance.bindUndoRedoControls(mainWindow)
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
+        appInstance.bindTunerView(mainWindow)
         appInstance.bindSettingsView(mainWindow)
+
+        // The sidebar's Adw.ViewSwitcherSidebar is bound directly to
+        // content_stack (see mainwindow.blp), so a sidebar click mutates
+        // visibleChildName without going through AppWindow.showPage() —
+        // mute-on-enter/restore-on-exit has to hook the property itself
+        // rather than the win.show-tuner action alone, so it fires no matter
+        // which of the three paths (sidebar click, Alt+5, showPage) changed
+        // the visible page.
+        var previousVisiblePage: String? = mainWindow.contentStack?.visibleChildName
+        mainWindow.contentStack?.onNotify("visible-child-name") {
+            val current = mainWindow.contentStack?.visibleChildName
+            if (current == "tuner" && previousVisiblePage != "tuner") appInstance.onTunerTabEntered(mainWindow)
+            if (previousVisiblePage == "tuner" && current != "tuner") appInstance.onTunerTabExited()
+            previousVisiblePage = current
+        }
 
         // Window-scoped actions ("win.*") backing the keyboard shortcuts below.
         // Handlers all delegate to methods that already exist for their mouse-driven
@@ -705,6 +805,7 @@ fun main(args: Array<String>) {
                 showDashboard = { mainWindow.showPage("dashboard") },
                 showChainEditor = { mainWindow.showPage("editor") },
                 showPresets = { mainWindow.showPage("presets") },
+                showTuner = { mainWindow.showPage("tuner") },
                 showSettings = { mainWindow.showPage("settings") },
                 toggleLibrary = { mainWindow.toggleLibraryPanel() },
                 save = { appInstance.openSavePresetDialog(mainWindow) },
@@ -718,6 +819,10 @@ fun main(args: Array<String>) {
         app.setAccelsForAction("win.show-chain-editor", arrayOf("<Alt>2"))
         app.setAccelsForAction("win.show-presets", arrayOf("<Alt>3"))
         app.setAccelsForAction("win.show-settings", arrayOf("<Alt>4"))
+        // Deliberately not renumbering <Alt>1..4 above even though Tuner
+        // appears before Settings in tab order — Tuner is a new tab, so
+        // <Alt>5 avoids silently breaking muscle memory/docs for the existing four.
+        app.setAccelsForAction("win.show-tuner", arrayOf("<Alt>5"))
         app.setAccelsForAction("win.toggle-library", arrayOf("<Primary>b"))
         app.setAccelsForAction("win.save", arrayOf("<Primary>s"))
         app.setAccelsForAction("win.load", arrayOf("<Primary>l"))
@@ -741,6 +846,16 @@ fun main(args: Array<String>) {
         GLib.timeoutAdd(0, 100) {
             val perUnitCpuLoad = appInstance.sampleAndPublishMetrics()
             appInstance.chainEditorView.updatePerUnitMetrics(perUnitCpuLoad)
+            true
+        }
+
+        // A third, dedicated 100ms timer rather than folded into the metrics
+        // one above (same reasoning as that timer's own comment): the
+        // tuner's cadence is a requirement of the tuner feature specifically,
+        // and sampleAndPublishTunerPitch() itself no-ops instantly unless the
+        // Tuner tab is actually visible, so this costs nothing while closed.
+        GLib.timeoutAdd(0, 100) {
+            appInstance.sampleAndPublishTunerPitch()
             true
         }
 

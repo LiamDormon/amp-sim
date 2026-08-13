@@ -1,0 +1,143 @@
+/* Tuner tab — a VU-meter-bridge-style bipolar LED arc with a needle, framed
+ * in the same recessed "instrument panel" language dashboard.css uses for
+ * its meter cluster, so the tab reads as one contained gauge rather than a
+ * graphic floating in empty space. The one accent color (@amp_accent) still
+ * means "live"; here it doubles as the "drifting" end of a green-to-amber
+ * lerp across the lit segment span, with @led_green owning the in-tune
+ * bullseye bloom exactly as it owns the connected-state LED elsewhere.
+ *
+ * GTK scopes @define-color per CssProvider, so these are redeclared here —
+ * same values as dashboard.css/chain-editor.css, not a separate palette.
+ *
+ * The panel is a fixed, generous size (not stretched to fill the tab, see
+ * .tuner-pitch-display below) — sized to read as a confident hero instrument
+ * on this app's default 1400x900 window without either drowning in empty
+ * space (too small) or sprawling past a sensible gauge size (too big).
+ */
+
+@define-color amp_accent #e8a251;
+@define-color led_green #3ddc72;
+
+.tuner-view {
+  background-color: @window_bg_color;
+}
+
+/* ── Mode strip ──────────────────────────────────────────────────────────── */
+
+.tuner-mode-strip {
+  padding-bottom: 0.25em;
+}
+
+/* ── Pitch display panel ─────────────────────────────────────────────────── */
+
+/* The recessed cavity, same treatment as dashboard.css's instrument panel —
+ * this is the tab's one instrument, so it gets the same "routed into the
+ * chassis" framing as every other control cluster in the app. Bounded (not
+ * expand-to-fill): PitchDisplay sets its own halign/valign to CENTER, so a
+ * vexpand'd/hexpand'd allocation around it just centers this card instead of
+ * stretching it. */
+.tuner-pitch-display {
+  padding: 2.25em 3.25em 2em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 1em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+.tuner-note-name {
+  font-size: 3.25em;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: @window_fg_color;
+}
+
+.tuner-frequency {
+  font-size: 1.0625em;
+  font-weight: 600;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  color: alpha(@window_fg_color, 0.55);
+  margin-bottom: 0.375em;
+}
+
+.tuner-stage {
+  min-width: 28em;
+  min-height: 17em;
+}
+
+.tuner-status {
+  font-size: 1.375em;
+  font-weight: 800;
+  color: alpha(@window_fg_color, 0.45);
+  margin-top: 0.25em;
+}
+
+.tuner-status--in-tune {
+  color: @led_green;
+}
+
+.tuner-status--adjust {
+  color: @amp_accent;
+}
+
+.tuner-detail {
+  font-size: 0.875em;
+  font-weight: 600;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  color: alpha(@window_fg_color, 0.5);
+}
+
+/* ── Manual-mode target selector ────────────────────────────────────────── */
+
+.tuner-target-selector {
+  padding-top: 0.5em;
+}
+
+.tuner-note-chip {
+  min-width: 4.5em;
+  padding: 0.5em 0.75em;
+  background-color: alpha(@window_fg_color, 0.06);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 0.5em;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.tuner-note-chip:hover {
+  background-color: alpha(@window_fg_color, 0.1);
+}
+
+flowboxchild:selected .tuner-note-chip {
+  background-color: alpha(@amp_accent, 0.12);
+  border-color: alpha(@amp_accent, 0.5);
+  box-shadow: 0 0 0 0.0625em alpha(@amp_accent, 0.4);
+}
+
+/* Persistent "already tuned this session" cue — accumulates across both
+ * modes (see TunerState.tunedStringNumbers), so a string stays marked done
+ * even after the selection or detected pitch moves on. Layered under the
+ * :selected treatment above (a re-selected already-tuned chip still shows
+ * the accent highlight) via the note text staying green regardless. */
+.tuner-note-chip--tuned {
+  background-color: alpha(@led_green, 0.12);
+  border-color: alpha(@led_green, 0.5);
+}
+
+.tuner-note-chip--tuned .tuner-chip-note {
+  color: @led_green;
+}
+
+.tuner-chip-position {
+  font-size: 0.6875em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: alpha(@window_fg_color, 0.5);
+}
+
+.tuner-chip-note {
+  font-size: 1.0625em;
+  font-weight: 700;
+  color: @window_fg_color;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+}

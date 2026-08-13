@@ -88,10 +88,40 @@ data class RealTimeConfiguration(
 }
 
 @Serializable
+enum class TunerModeKind { AUTO, MANUAL }
+
+/**
+ * Tuner tab settings. [tuningId] is resolved against
+ * [org.ampsim.tuner.BuiltInTunings.ALL] at read time (falling back to
+ * standard tuning if not found) rather than embedding a [org.ampsim.tuner.Tuning]
+ * directly, keeping config decoupled from that package's data shape.
+ * [lastManualStringNumber] persists only the selected string's number, not the
+ * whole manual-mode target, since [org.ampsim.tuner.TuningString]/[org.ampsim.tuner.Note]
+ * are derived data, not storage - it is re-resolved against the active tuning
+ * on load.
+ */
+@Serializable
+data class TunerConfiguration(
+    val referencePitchHz: Float = 440f,
+    val tuningId: String = "standard",
+    val lastModeKind: TunerModeKind = TunerModeKind.AUTO,
+    val lastManualStringNumber: Int? = null
+) {
+    init {
+        require(referencePitchHz in 400f..480f) { "referencePitchHz must be 400-480" }
+        require(tuningId.isNotBlank()) { "tuningId must not be blank" }
+        require(lastManualStringNumber == null || lastManualStringNumber > 0) {
+            "lastManualStringNumber must be > 0"
+        }
+    }
+}
+
+@Serializable
 data class AppConfiguration(
     val audio: AudioConfiguration = AudioConfiguration(),
     val ui: UIConfiguration = UIConfiguration(),
     val presets: PresetsConfiguration = PresetsConfiguration(),
     val advanced: AdvancedConfiguration = AdvancedConfiguration(),
-    val realTime: RealTimeConfiguration = RealTimeConfiguration()
+    val realTime: RealTimeConfiguration = RealTimeConfiguration(),
+    val tuner: TunerConfiguration = TunerConfiguration()
 )

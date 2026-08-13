@@ -292,6 +292,20 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                         </child>
                         <child>
                           <object class="AdwViewStackPage">
+                            <property name="name">tuner</property>
+                            <property name="title" translatable="yes">Tuner</property>
+                            <property name="icon-name">audio-input-microphone-symbolic</property>
+                            <property name="child">
+                              <object class="GtkBox" id="tuner_host">
+                                <property name="orientation">1</property>
+                                <property name="vexpand">true</property>
+                                <property name="hexpand">true</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwViewStackPage">
                             <property name="name">settings</property>
                             <property name="title" translatable="yes">Settings</property>
                             <property name="icon-name">applications-system-symbolic</property>
