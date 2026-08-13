@@ -47,7 +47,7 @@ class AudioEngine(
     private val droppedCommands = AtomicLong(0)
 
     // ---- Retired-module disposal (audio thread -> control thread) -----------
-    // A module retired from activeChain/crossfadeOldChain (an LV2 adapter's
+    // A module retired from chainState.modules/crossfadeOldChain (an LV2 adapter's
     // native Arena, specifically) must be freed off the RT thread. This queue
     // mirrors commandQueue's direction reversed: the RT thread offers, the
     // control thread polls via pollRetiredModules().
@@ -63,12 +63,14 @@ class AudioEngine(
     @Volatile private var outputLevel = 0f
     @Volatile private var cpuLoadEstimate = 0f
 
-    /** Per-module CPU timing for the current [activeChain] generation — see [ChainTimingSnapshot]. */
-    @Volatile private var chainTiming = ChainTimingSnapshot.EMPTY
-
     // ---- Real-time thread owned state (only touched inside process()) -------
 
-    @Volatile private var activeChain: List<DSPModule> = emptyList()
+    /**
+     * The active chain's modules and their per-module CPU timing, as one
+     * [ActiveChainState] swapped atomically on every reload — see its doc
+     * comment for why this is one field rather than two.
+     */
+    @Volatile private var chainState = ActiveChainState.EMPTY
     private var rtPlaybackEnabled = true
 
     // Sample rate cached once in start() (before the RT thread can be calling
@@ -86,7 +88,7 @@ class AudioEngine(
 
     // Second pair of pre-allocated scratch buffers, used only while a
     // crossfade is in progress to run the outgoing ("old") chain in parallel
-    // with activeChain (the "new" chain, processed on scratchA/scratchB).
+    // with chainState.modules (the "new" chain, processed on scratchA/scratchB).
     private var scratchC = FloatArray(DEFAULT_MAX_BLOCK)
     private var scratchD = FloatArray(DEFAULT_MAX_BLOCK)
 
@@ -229,7 +231,7 @@ class AudioEngine(
     fun getOutputLevel(): Float = outputLevel
 
     /** Number of active DSP modules in the current chain. */
-    fun getActiveModuleCount(): Int = activeChain.size
+    fun getActiveModuleCount(): Int = chainState.modules.size
 
     /** Current command-queue capacity — reallocated by [start] if [RealTimeConfiguration.commandQueueCapacity] changes. */
     fun getCommandQueueCapacity(): Int = commandQueue.capacity
@@ -245,18 +247,18 @@ class AudioEngine(
      */
     fun getCpuLoad(): Float = cpuLoadEstimate
 
-    /** Per-module CPU load for the current chain generation — one [ChainTimingSnapshot] read, lock-free. */
-    fun getChainTiming(): ChainTimingSnapshot = chainTiming
+    /** Per-module CPU load for the current chain generation — one [ActiveChainState] read, lock-free. */
+    fun getChainTiming(): ChainTimingSnapshot = chainState.timing
 
     /**
      * Sum of every active module's [org.ampsim.dsp.DSPModule.getLatencySamples],
      * i.e. the DSP-introduced latency of the current chain (distinct from JACK's
      * own I/O buffer latency, which callers derive separately from sample rate
-     * and buffer size). Safe to call from the control thread: `activeChain` is
+     * and buffer size). Safe to call from the control thread: `chainState` is
      * only ever swapped as a whole reference, and [org.ampsim.dsp.DSPModule.getLatencySamples]
      * is a pure query, not RT-thread-owned mutable state.
      */
-    fun getTotalLatencySamples(): Int = activeChain.sumOf { it.getLatencySamples() }
+    fun getTotalLatencySamples(): Int = chainState.modules.sumOf { it.getLatencySamples() }
 
     /** Number of commands dropped because the queue was full. */
     fun getDroppedCommandCount(): Long = droppedCommands.get()
@@ -349,10 +351,10 @@ class AudioEngine(
         jackClient.close()
         // jackClient.close() guarantees process() won't be called again, so
         // it's now safe to flush anything the RT thread retired but this
-        // hasn't drained yet. Deliberately does NOT dispose activeChain
+        // hasn't drained yet. Deliberately does NOT dispose chainState.modules
         // itself: restart() reuses those same module instances across a
         // stop()/start() cycle, so disposing them here would hand back
-        // dangling native handles on the next loadModules(chainSnapshot).
+        // dangling native handles on the next loadModules(snapshot.modules).
         pollRetiredModules()
         status = AudioStatus()
         logger.info("Audio engine stopped")
@@ -366,11 +368,13 @@ class AudioEngine(
      * server-wide and can't be changed by this app regardless of restart.
      */
     fun restart() {
-        val chainSnapshot = activeChain
-        val unitIdsSnapshot = chainTiming.unitIds
+        // One volatile read of the bundled state, not two of separate
+        // fields — see ActiveChainState's doc comment for why that
+        // distinction matters here specifically.
+        val snapshot = chainState
         stop()
         start()
-        loadModules(chainSnapshot, unitIdsSnapshot)
+        loadModules(snapshot.modules, snapshot.timing.unitIds)
     }
 
     // -------------------------------------------------------------------------
@@ -412,8 +416,11 @@ class AudioEngine(
         inputLevel = kotlin.math.sqrt(inputSumSquares / framesToCopy)
 
         // Run the DSP chain (or pass through when empty), blending against a
-        // decaying outgoing chain if a crossfade is in progress.
-        val chain = activeChain
+        // decaying outgoing chain if a crossfade is in progress. One read of
+        // the bundled state so `chain` and its timing array below always
+        // describe the same generation.
+        val state = chainState
+        val chain = state.modules
         if (crossfadeRemainingFrames > 0) {
             ensureScratch(framesToCopy)
             val a = scratchA
@@ -430,7 +437,7 @@ class AudioEngine(
             var dstNew = b
             var srcOld = c
             var dstOld = d
-            val newChainCpu = chainTiming.cpuLoadPerUnit
+            val newChainCpu = state.timing.cpuLoadPerUnit
             runBlocking {
                 for (i in chain.indices) {
                     val moduleStartNanos = System.nanoTime()
@@ -479,11 +486,11 @@ class AudioEngine(
             // A single runBlocking per block; the DSP modules are RT-friendly
             // and do not actually suspend, so no dispatch/allocation happens per
             // module inside the loop. Each module is individually timed into
-            // chainTiming.cpuLoadPerUnit (a pre-allocated array sized to this
+            // state.timing.cpuLoadPerUnit (a pre-allocated array sized to this
             // chain generation, written in place — no allocation here).
             var src = a
             var dst = b
-            val perUnitCpu = chainTiming.cpuLoadPerUnit
+            val perUnitCpu = state.timing.cpuLoadPerUnit
             runBlocking {
                 for (i in chain.indices) {
                     val moduleStartNanos = System.nanoTime()
@@ -537,13 +544,13 @@ class AudioEngine(
     private fun applyCommand(command: AudioCommand) {
         when (command) {
             is AudioCommand.LoadChain -> {
-                retireChain(activeChain)
+                retireChain(chainState.modules)
                 // An ordinary structural swap must win over any in-flight fade:
                 // continuing to blend against a chain the caller just replaced
                 // would be confusing, so drop it and hard-swap instead.
                 retireChain(crossfadeOldChain)
-                activeChain = command.modules
-                chainTiming = command.timing
+                // One field write, not two — see ActiveChainState's doc comment.
+                chainState = ActiveChainState(command.modules, command.timing)
                 crossfadeOldChain = emptyList()
                 crossfadeRemainingFrames = 0
             }
@@ -553,18 +560,17 @@ class AudioEngine(
                 // decaying, so retire it now rather than losing the
                 // reference when crossfadeOldChain is overwritten below.
                 if (crossfadeRemainingFrames > 0) retireChain(crossfadeOldChain)
-                crossfadeOldChain = activeChain
-                activeChain = command.modules
-                chainTiming = command.timing
+                crossfadeOldChain = chainState.modules
+                chainState = ActiveChainState(command.modules, command.timing)
                 crossfadeTotalFrames = command.fadeFrames.coerceAtLeast(1)
                 crossfadeRemainingFrames = crossfadeTotalFrames
             }
             is AudioCommand.SetParameter -> {
-                val module = activeChain.getOrNull(command.index)
+                val module = chainState.modules.getOrNull(command.index)
                 module?.setParameter(command.name, command.value)
             }
             is AudioCommand.ResetChain -> {
-                for (module in activeChain) module.reset()
+                for (module in chainState.modules) module.reset()
             }
             is AudioCommand.SetPlayback -> rtPlaybackEnabled = command.enabled
             is AudioCommand.SetNoiseGateEnabled -> noiseGate.enabled = command.enabled
@@ -622,7 +628,7 @@ class AudioEngine(
             lastError = status.lastError,
             inputLevel = inputLevel,
             outputLevel = outputLevel,
-            activeModules = activeChain.size,
+            activeModules = chainState.modules.size,
             droppedCommands = droppedCommands.get(),
             rtWarning = rtWarning
         )

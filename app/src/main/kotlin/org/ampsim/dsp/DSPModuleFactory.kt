@@ -81,6 +81,7 @@ object DSPModuleFactory {
      */
     fun createChainWithIds(chain: Chain, sampleRate: Int = BaseDSPModule.DEFAULT_SAMPLE_RATE): Pair<List<DSPModule>, List<String>> {
         val pairs = chain.enabledUnits().mapNotNull { unit -> create(unit, sampleRate)?.let { unit.id to it } }
-        return pairs.map { it.second } to pairs.map { it.first }
+        val (ids, modules) = pairs.unzip()
+        return modules to ids
     }
 }
