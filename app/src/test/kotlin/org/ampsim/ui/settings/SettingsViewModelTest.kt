@@ -63,7 +63,8 @@ class SettingsViewModelTest {
             advanced = AdvancedConfiguration(
                 enableCPUMonitoring = true,
                 latencyCompensation = true,
-                autoSaveIntervalSeconds = 45
+                autoSaveIntervalSeconds = 45,
+                logMetricsToFile = true
             )
         )
         val state = model(config = config).state.first()
@@ -71,6 +72,7 @@ class SettingsViewModelTest {
         assertEquals(true, state.enableCPUMonitoring)
         assertEquals(true, state.latencyCompensation)
         assertEquals(45, state.autoSaveIntervalSeconds)
+        assertEquals(true, state.logMetricsToFile)
     }
 
     @Test

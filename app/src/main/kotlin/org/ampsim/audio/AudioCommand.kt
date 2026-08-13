@@ -18,8 +18,11 @@ sealed interface AudioCommand {
     /**
      * Replace the entire active DSP chain. The [modules] list and every module
      * in it must be fully constructed and pre-warmed off the audio thread.
+     * [timing] must be sized to `modules.size` (a zero-initialized
+     * [ChainTimingSnapshot], built off the audio thread alongside [modules])
+     * so the audio thread only ever assigns it, never allocates one.
      */
-    data class LoadChain(val modules: List<DSPModule>) : AudioCommand
+    data class LoadChain(val modules: List<DSPModule>, val timing: ChainTimingSnapshot) : AudioCommand
 
     /**
      * Update a single parameter of the module at [index] in the active chain.
@@ -47,5 +50,5 @@ sealed interface AudioCommand {
      * chain is retained separately purely to finish decaying its output (e.g.
      * a delay tail) before being dropped.
      */
-    data class CrossfadeToChain(val modules: List<DSPModule>, val fadeFrames: Int) : AudioCommand
+    data class CrossfadeToChain(val modules: List<DSPModule>, val fadeFrames: Int, val timing: ChainTimingSnapshot) : AudioCommand
 }

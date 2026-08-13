@@ -5,6 +5,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import org.ampsim.audio.AudioStatus
+import org.ampsim.metrics.MetricsSnapshot
 import org.ampsim.model.Chain
 import org.ampsim.model.Preset
 import org.ampsim.persistence.PresetSummary
@@ -21,7 +22,11 @@ data class DashboardState(
     /** Normalized meter fraction in `[0, 1]`, dB-scaled from the engine's raw linear RMS — see [amplitudeToMeterFraction]. */
     val outputLevel: Float,
     /** From Settings' CPU Monitoring toggle. CPU is always self-measured regardless — this only gates the meter's visibility. */
-    val showCpuMeter: Boolean = true
+    val showCpuMeter: Boolean = true,
+    /** DSP-introduced chain latency (sum of every active module's declared latency), already smoothed — see [org.ampsim.metrics.MetricsSmoother]. */
+    val chainLatencyMs: Double = 0.0,
+    /** JVM heap used / max, in `[0, 1]`. */
+    val heapUsagePercent: Float = 0f
 )
 
 /**
@@ -56,13 +61,16 @@ class DashboardViewModel(
     /** Passed through unmodified — already resolves the recent-presets MRU list to summaries. */
     val recentPresets: Flow<List<PresetSummary>>,
     /** From Settings' CPU Monitoring toggle, e.g. `configManager.config.map { it.advanced.enableCPUMonitoring }`. */
-    enableCPUMonitoring: Flow<Boolean>
+    enableCPUMonitoring: Flow<Boolean>,
+    /** The 100ms-cadence smoothed metrics stream — see `App.sampleAndPublishMetrics`. */
+    metrics: Flow<MetricsSnapshot>
 ) {
     val state: Flow<DashboardState> = combine(
         combine(activePreset, lastKnownPresetName, chain, ::Triple),
         audioStatus,
-        enableCPUMonitoring
-    ) { (preset, lastName, chain), status, showCpuMeter ->
+        enableCPUMonitoring,
+        metrics
+    ) { (preset, lastName, chain), status, showCpuMeter, metricsSnapshot ->
         DashboardState(
             presetDisplayName = preset?.metadata?.name ?: lastName ?: "Untitled",
             // A brand-new, never-loaded-or-saved chain isn't "dirty" -- there's
@@ -74,7 +82,13 @@ class DashboardViewModel(
             isJackConnected = status.isConnected,
             inputLevel = amplitudeToMeterFraction(status.inputLevel),
             outputLevel = amplitudeToMeterFraction(status.outputLevel),
-            showCpuMeter = showCpuMeter
+            showCpuMeter = showCpuMeter,
+            chainLatencyMs = metricsSnapshot.chainLatencyMs,
+            heapUsagePercent = if (metricsSnapshot.heapMaxBytes > 0) {
+                (metricsSnapshot.heapUsedBytes.toFloat() / metricsSnapshot.heapMaxBytes).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
         )
     }
 }

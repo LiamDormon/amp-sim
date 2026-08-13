@@ -1,5 +1,6 @@
 package org.ampsim.ui.chain
 
+import kotlin.math.roundToInt
 import org.ampsim.dsp.DSPModuleFactory
 import org.ampsim.dsp.ModuleCatalog
 import org.ampsim.dsp.ModuleDescriptor
@@ -135,6 +136,22 @@ class ChainEditor(
     }
 
     /**
+     * Push live per-unit CPU load (0..1, keyed by unit id) from the 100ms
+     * metrics timer into each row's badge — a direct push from `App`, not an
+     * event-bus round trip, matching how `AppWindow.updateVolumeDisplay`
+     * already pushes engine state straight into a widget on the same timer.
+     * A unit absent from [cpuLoadByUnitId] (bypassed/disabled units are
+     * excluded upstream, see `DSPModuleFactory.createChainWithIds`) reads
+     * `"—"` rather than a stale last-known number.
+     */
+    fun updatePerUnitMetrics(cpuLoadByUnitId: Map<String, Float>) {
+        for (row in rowsById.values) {
+            val load = cpuLoadByUnitId[row.unitId]
+            row.cpuLabel.text = if (load != null) "${(load * 100).roundToInt()}%" else "—"
+        }
+    }
+
+    /**
      * Sync the row widgets to [chain]: rows for units no longer present are
      * removed, rows for new units are created, and every row's content and
      * position is updated to match. Existing row widgets are reused so that
@@ -224,7 +241,14 @@ class ChainEditor(
         typeLabel.addCssClass("chain-unit-type-badge")
         typeLabel.halign = Align.START
 
+        val cpuLabel = Label("—")
+        cpuLabel.addCssClass("amp-legend")
+        cpuLabel.addCssClass("chain-unit-cpu-badge")
+        cpuLabel.halign = Align.START
+        cpuLabel.setAccessibleLabel("${unit.model} CPU load")
+
         typeRow.append(typeLabel)
+        typeRow.append(cpuLabel)
 
         textBox.append(titleLabel)
         textBox.append(typeRow)
@@ -290,7 +314,7 @@ class ChainEditor(
         val contextMenuHandles = buildContextMenu(unit.id)
         contextMenuHandles.popover.setParent(root)
 
-        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, led, contextMenuHandles.popover, contextMenuHandles.pasteButton, content, expander, controls)
+        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, cpuLabel, toggle, led, contextMenuHandles.popover, contextMenuHandles.pasteButton, content, expander, controls)
 
         toggle.onStateSet { state ->
             model.setUnitEnabled(unit.id, state)
@@ -641,6 +665,8 @@ class ChainEditor(
     /** The row's header (drag handle / title / enable switch) — where the primary-click select gesture lives. */
     internal fun headerWidgetFor(unitId: String): Widget? = rowsById[unitId]?.headerContent
 
+    internal fun cpuLabelTextFor(unitId: String): String? = rowsById[unitId]?.cpuLabel?.text
+
     internal fun controlsFor(unitId: String): List<Pair<ParameterInfo, ParameterControl>> =
         rowsById[unitId]?.controls ?: emptyList()
 
@@ -669,6 +695,7 @@ class ChainEditor(
         val root: Box,
         val titleLabel: Label,
         val typeLabel: Label,
+        val cpuLabel: Label,
         val toggle: Switch,
         val led: Box,
         val contextMenu: Popover,

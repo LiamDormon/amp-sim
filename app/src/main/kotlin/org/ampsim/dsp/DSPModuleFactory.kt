@@ -72,4 +72,16 @@ object DSPModuleFactory {
      */
     fun createChain(chain: Chain, sampleRate: Int = BaseDSPModule.DEFAULT_SAMPLE_RATE): List<DSPModule> =
         chain.enabledUnits().mapNotNull { create(it, sampleRate) }
+
+    /**
+     * Same ordering/skip rules as [createChain], but also returns each built
+     * module's originating [EffectUnit.id] alongside it, 1:1 by index — needed
+     * wherever per-module output (e.g. per-unit CPU timing) must be correlated
+     * back to a unit afterwards, which plain [createChain] discards.
+     */
+    fun createChainWithIds(chain: Chain, sampleRate: Int = BaseDSPModule.DEFAULT_SAMPLE_RATE): Pair<List<DSPModule>, List<String>> {
+        val pairs = chain.enabledUnits().mapNotNull { unit -> create(unit, sampleRate)?.let { unit.id to it } }
+        val (ids, modules) = pairs.unzip()
+        return modules to ids
+    }
 }

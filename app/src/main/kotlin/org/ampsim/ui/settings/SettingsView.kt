@@ -54,6 +54,7 @@ class SettingsView(
     private val onThemeChanged: (String) -> Unit,
     private val onCpuMonitoringChanged: (Boolean) -> Unit,
     private val onLatencyCompensationChanged: (Boolean) -> Unit,
+    private val onLogMetricsToFileChanged: (Boolean) -> Unit,
     private val onAutoSaveIntervalChanged: (Int) -> Unit,
     private val onRtPriorityChanged: (Int) -> Unit,
     private val onCpuAffinityChanged: (Set<Int>) -> Unit,
@@ -136,8 +137,13 @@ class SettingsView(
         title = "Latency Compensation"
         subtitle = "Reserved for future use"
     }
+    private val logMetricsToFileRow = SwitchRow().apply {
+        title = "Log Metrics to File"
+        subtitle = "Write CPU/latency/memory samples to ~/.local/share/amp-sim/logs/metrics.csv"
+    }
     private var suppressCpuMonitoringCallback = false
     private var suppressLatencyCompensationCallback = false
+    private var suppressLogMetricsToFileCallback = false
 
     private val autoSaveAdjustment = Adjustment(30.0, 5.0, 300.0, 5.0, 15.0, 0.0)
     private val autoSaveScale = Scale(Orientation.HORIZONTAL, autoSaveAdjustment).apply {
@@ -315,6 +321,10 @@ class SettingsView(
             if (suppressLatencyCompensationCallback) return@onNotify
             onLatencyCompensationChanged(latencyCompensationRow.active)
         }
+        logMetricsToFileRow.onNotify("active") {
+            if (suppressLogMetricsToFileCallback) return@onNotify
+            onLogMetricsToFileChanged(logMetricsToFileRow.active)
+        }
         autoSaveAdjustment.onValueChanged {
             if (suppressAutoSaveCallback) return@onValueChanged
             onAutoSaveIntervalChanged(autoSaveAdjustment.value.toInt())
@@ -396,6 +406,7 @@ class SettingsView(
             title = "Advanced"
             add(cpuMonitoringRow)
             add(latencyCompensationRow)
+            add(logMetricsToFileRow)
             autoSaveRow.addSuffix(autoSaveScale)
             add(autoSaveRow)
         }
@@ -497,6 +508,10 @@ class SettingsView(
         latencyCompensationRow.active = state.latencyCompensation
         suppressLatencyCompensationCallback = false
 
+        suppressLogMetricsToFileCallback = true
+        logMetricsToFileRow.active = state.logMetricsToFile
+        suppressLogMetricsToFileCallback = false
+
         suppressAutoSaveCallback = true
         autoSaveAdjustment.value = state.autoSaveIntervalSeconds.toDouble()
         suppressAutoSaveCallback = false
@@ -551,6 +566,7 @@ class SettingsView(
     internal fun simulateThemeSelected(index: Int) { themeRow.selected = index }
     internal fun simulateCpuMonitoringToggled(active: Boolean) { cpuMonitoringRow.active = active }
     internal fun simulateLatencyCompensationToggled(active: Boolean) { latencyCompensationRow.active = active }
+    internal fun simulateLogMetricsToFileToggled(active: Boolean) { logMetricsToFileRow.active = active }
     internal fun simulateAutoSaveIntervalChanged(seconds: Int) { autoSaveAdjustment.value = seconds.toDouble() }
 
     internal fun simulateRtPriorityChanged(priority: Int) { rtPriorityAdjustment.value = priority.toDouble() }

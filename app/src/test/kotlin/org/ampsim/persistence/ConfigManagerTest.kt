@@ -127,7 +127,8 @@ class ConfigManagerTest {
                 advanced = current.advanced.copy(
                     enableCPUMonitoring = true,
                     latencyCompensation = true,
-                    autoSaveIntervalSeconds = 90
+                    autoSaveIntervalSeconds = 90,
+                    logMetricsToFile = true
                 )
             )
         }
@@ -138,7 +139,8 @@ class ConfigManagerTest {
                 saved.audio.backend == "jack" &&
                 saved.advanced.enableCPUMonitoring &&
                 saved.advanced.latencyCompensation &&
-                saved.advanced.autoSaveIntervalSeconds == 90
+                saved.advanced.autoSaveIntervalSeconds == 90 &&
+                saved.advanced.logMetricsToFile
         }
 
         assertEquals("system:playback_2", manager.config.value.audio.outputDeviceId)
@@ -146,6 +148,7 @@ class ConfigManagerTest {
         assertEquals(true, manager.config.value.advanced.enableCPUMonitoring)
         assertEquals(true, manager.config.value.advanced.latencyCompensation)
         assertEquals(90, manager.config.value.advanced.autoSaveIntervalSeconds)
+        assertEquals(true, manager.config.value.advanced.logMetricsToFile)
     }
 
     @Test
