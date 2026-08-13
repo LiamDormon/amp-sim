@@ -58,6 +58,7 @@ class ChainEditor(
     /** Fallback lookup for a Library drop whose type isn't a built-in — an `"lv2:<uri>"` type. */
     private val lv2DescriptorLookup: (String) -> ModuleDescriptor? = LV2PluginCache::descriptorFor,
     private val onAddUnitRequested: () -> Unit = {},
+    private val onToast: (String) -> Unit = {},
     /**
      * Builds the [Debouncer] used to coalesce a continuous parameter's rapid
      * onChanged calls before they reach [ChainEditorModel.setUnitParameter].
@@ -104,6 +105,25 @@ class ChainEditor(
 
         append(scrolled)
         append(addButton)
+
+        val clipboardKeyController = EventControllerKey()
+        clipboardKeyController.onKeyPressed { keyval, _, state ->
+            val ctrlHeld = ModifierType.CONTROL_MASK in state
+            when {
+                ctrlHeld && keyval == Gdk.KEY_c -> {
+                    model.selectedUnitId.value?.let { id ->
+                        model.copyUnit(id)?.let { onToast("Copied \"${it.model}\"") }
+                    }
+                    true
+                }
+                ctrlHeld && keyval == Gdk.KEY_v -> {
+                    model.pasteUnit()?.let { onToast("Pasted \"${it.model}\"") }
+                    true
+                }
+                else -> false
+            }
+        }
+        addController(clipboardKeyController)
 
         model.addListener { chain -> render(chain) }
         render(model.chain.value)
@@ -267,10 +287,10 @@ class ChainEditor(
         root.append(chassis)
         root.append(buildConnector())
 
-        val contextMenu = buildContextMenu(unit.id)
-        contextMenu.setParent(root)
+        val contextMenuHandles = buildContextMenu(unit.id)
+        contextMenuHandles.popover.setParent(root)
 
-        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, led, contextMenu, content, expander, controls)
+        val row = ChainUnitRow(unit.id, root, titleLabel, typeLabel, toggle, led, contextMenuHandles.popover, contextMenuHandles.pasteButton, content, expander, controls)
 
         toggle.onStateSet { state ->
             model.setUnitEnabled(unit.id, state)
@@ -397,13 +417,22 @@ class ChainEditor(
         GLib.timeoutAddOnce(PARAMETER_UPDATED_FLASH_MS) { tile.removeCssClass(PARAMETER_UPDATED_CSS_CLASS) }
     }
 
-    private fun buildContextMenu(unitId: String): Popover {
+    private fun buildContextMenu(unitId: String): ContextMenuHandles {
         val menuBox = Box(Orientation.VERTICAL, 0)
         menuBox.addCssClass("chain-unit-context-menu")
 
         val removeButton = Button.withLabel("Remove Unit")
         removeButton.addCssClass("flat")
         removeButton.name = REMOVE_MENU_ITEM_NAME
+
+        val copyButton = Button.withLabel("Copy")
+        copyButton.addCssClass("flat")
+        copyButton.name = COPY_MENU_ITEM_NAME
+
+        val pasteButton = Button.withLabel("Paste")
+        pasteButton.addCssClass("flat")
+        pasteButton.name = PASTE_MENU_ITEM_NAME
+        pasteButton.sensitive = model.hasClipboardContent()
 
         val duplicateButton = Button.withLabel("Duplicate")
         duplicateButton.addCssClass("flat")
@@ -416,6 +445,8 @@ class ChainEditor(
         renameButton.name = RENAME_MENU_ITEM_NAME
 
         menuBox.append(removeButton)
+        menuBox.append(copyButton)
+        menuBox.append(pasteButton)
         menuBox.append(duplicateButton)
         menuBox.append(renameButton)
 
@@ -429,13 +460,32 @@ class ChainEditor(
             model.removeUnit(unitId)
         }
 
-        return popover
+        copyButton.onClicked {
+            popover.popdown()
+            model.copyUnit(unitId)?.let { onToast("Copied \"${it.model}\"") }
+        }
+
+        pasteButton.onClicked {
+            popover.popdown()
+            model.pasteUnit(afterUnitId = unitId)?.let { onToast("Pasted \"${it.model}\"") }
+        }
+
+        return ContextMenuHandles(popover, pasteButton)
     }
 
     private fun showContextMenu(row: ChainUnitRow) {
+        prepareContextMenu(row)
+        row.contextMenu.popup()
+    }
+
+    private fun prepareContextMenu(row: ChainUnitRow) {
         model.selectUnit(row.unitId)
         applySelectionHighlight()
-        row.contextMenu.popup()
+        row.pasteButton.sensitive = model.hasClipboardContent()
+    }
+
+    internal fun simulateContextMenuOpen(unitId: String) {
+        rowsById[unitId]?.let { prepareContextMenu(it) }
     }
 
     /** Select [row] and reveal its parameter drawer, if it has one and it's collapsed. */
@@ -582,6 +632,8 @@ class ChainEditor(
 
     internal fun contextMenuFor(unitId: String): Popover? = rowsById[unitId]?.contextMenu
 
+    internal fun pasteButtonFor(unitId: String): Button? = rowsById[unitId]?.pasteButton
+
     internal fun toggleFor(unitId: String): Switch? = rowsById[unitId]?.toggle
 
     internal fun expanderFor(unitId: String): Expander? = rowsById[unitId]?.expander
@@ -610,6 +662,8 @@ class ChainEditor(
     internal fun simulateLibraryDropOnCanvas(type: String): Boolean =
         onLibraryModuleDropped(type, model.units().size)
 
+    private data class ContextMenuHandles(val popover: Popover, val pasteButton: Button)
+
     private data class ChainUnitRow(
         val unitId: String,
         val root: Box,
@@ -618,6 +672,7 @@ class ChainEditor(
         val toggle: Switch,
         val led: Box,
         val contextMenu: Popover,
+        val pasteButton: Button,
         val headerContent: Box,
         val expander: Expander?,
         val controls: List<Pair<ParameterInfo, ParameterControl>>
@@ -643,6 +698,8 @@ class ChainEditor(
         private const val PARAMETER_UPDATED_CSS_CLASS = "chain-dial-tile--updated"
         private const val PARAMETER_UPDATED_FLASH_MS = 400
         internal const val REMOVE_MENU_ITEM_NAME = "chain-unit-context-menu-remove"
+        internal const val COPY_MENU_ITEM_NAME = "chain-unit-context-menu-copy"
+        internal const val PASTE_MENU_ITEM_NAME = "chain-unit-context-menu-paste"
         internal const val DUPLICATE_MENU_ITEM_NAME = "chain-unit-context-menu-duplicate"
         internal const val RENAME_MENU_ITEM_NAME = "chain-unit-context-menu-rename"
     }

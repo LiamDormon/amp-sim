@@ -7,6 +7,7 @@ import org.ampsim.chain.ChainManager
 import org.ampsim.events.EventBusImpl
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
+import java.util.UUID
 
 /**
  * GTK-facing adapter over a [ChainManager]: exposes the operations the Chain
@@ -33,6 +34,9 @@ class ChainEditorModel(private val chainManager: ChainManager) {
 
     private val _selectedUnitId = MutableStateFlow<String?>(null)
     val selectedUnitId: StateFlow<String?> = _selectedUnitId.asStateFlow()
+
+    private val _copiedUnit = MutableStateFlow<EffectUnit?>(null)
+    val copiedUnit: StateFlow<EffectUnit?> = _copiedUnit.asStateFlow()
 
     private val listeners = mutableListOf<(Chain) -> Unit>()
     private val parameterListeners = mutableListOf<(unitId: String, name: String, value: Float) -> Unit>()
@@ -110,6 +114,41 @@ class ChainEditorModel(private val chainManager: ChainManager) {
 
     fun selectUnit(unitId: String?) {
         _selectedUnitId.value = unitId
+    }
+
+    fun hasClipboardContent(): Boolean = _copiedUnit.value != null
+
+    /**
+     * Snapshot [unitId]'s current [EffectUnit] into the clipboard. A no-op if
+     * [unitId] doesn't exist. Because [EffectUnit] and [Chain] are fully
+     * immutable/persistent (every mutation replaces the whole unit via `.copy`,
+     * never mutates one in place — see [Chain.updateUnit]),
+     * storing the reference directly is already a safe point-in-time snapshot:
+     * later edits or removal of the source unit cannot retroactively change
+     * what's in the clipboard.
+     */
+    fun copyUnit(unitId: String): EffectUnit? {
+        val unit = units().firstOrNull { it.id == unitId } ?: return null
+        _copiedUnit.value = unit
+        return unit
+    }
+
+    /**
+     * Paste the clipboard contents as a brand-new unit (fresh UUID) inserted
+     * immediately after [afterUnitId] — defaulting to the currently selected
+     * unit. Falls back to appending at the end of the chain when [afterUnitId]
+     * is null or no longer present (nothing selected, or the reference unit was
+     * since removed). Returns null (no-op) if the clipboard is empty. The
+     * pasted unit becomes the new selection, matching drag-from-library UX.
+     */
+    fun pasteUnit(afterUnitId: String? = selectedUnitId.value): EffectUnit? {
+        val source = _copiedUnit.value ?: return null
+        val pasted = source.copy(id = UUID.randomUUID().toString())
+        val afterIndex = afterUnitId?.let { indexOf(it) } ?: -1
+        val insertIndex = if (afterIndex >= 0) afterIndex + 1 else units().size
+        addUnit(pasted, insertIndex)
+        selectUnit(pasted.id)
+        return pasted
     }
 
     /**

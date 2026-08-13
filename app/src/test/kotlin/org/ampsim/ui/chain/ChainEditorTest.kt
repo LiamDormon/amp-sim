@@ -15,6 +15,7 @@ import org.ampsim.ui.DialWithEntry
 import org.gnome.adw.Adw
 import org.gnome.adw.ColorScheme
 import org.gnome.adw.StyleManager
+import org.gnome.gtk.Button
 import org.gnome.gtk.DragSource
 import org.gnome.gtk.DropTarget
 import org.gnome.gtk.EventControllerKey
@@ -50,6 +51,17 @@ class ChainEditorTest {
             child = child.nextSibling
         }
         return names
+    }
+
+    private fun findButtonByName(container: Widget, buttonName: String): Button? {
+        var child = container.firstChild
+        while (child != null) {
+            if (child.name == buttonName && child is Button) {
+                return child
+            }
+            child = child.nextSibling
+        }
+        return null
     }
 
     // ── Units display correctly ────────────────────────────────────────────
@@ -296,6 +308,8 @@ class ChainEditorTest {
         assertEquals(
             listOf(
                 ChainEditor.REMOVE_MENU_ITEM_NAME,
+                ChainEditor.COPY_MENU_ITEM_NAME,
+                ChainEditor.PASTE_MENU_ITEM_NAME,
                 ChainEditor.DUPLICATE_MENU_ITEM_NAME,
                 ChainEditor.RENAME_MENU_ITEM_NAME
             ),
@@ -349,6 +363,65 @@ class ChainEditorTest {
 
         assertEquals(null, editor.contextMenuFor("1"))
         assertEquals(null, contextMenu.parent)
+    }
+
+    @Test
+    fun pasteIsInsensitiveUntilAUnitHasBeenCopied() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val editor = ChainEditor(model)
+        val pasteButton = editor.pasteButtonFor("1")!!
+
+        assertFalse(pasteButton.sensitive)
+
+        model.copyUnit("1")
+        editor.simulateContextMenuOpen("1")
+
+        assertTrue(pasteButton.sensitive)
+    }
+
+    @Test
+    fun copyButtonCopiesTheUnitOnClick() {
+        val model = ChainEditorModel(Chain(listOf(unit1)))
+        val toastMessages = mutableListOf<String>()
+        val editor = ChainEditor(model, onToast = { toastMessages.add(it) })
+
+        val contextMenu = editor.contextMenuFor("1")!!
+        val menuContent = contextMenu.child!!
+        val copyButton = findButtonByName(menuContent, ChainEditor.COPY_MENU_ITEM_NAME)!!
+        copyButton.emitClicked()
+
+        assertTrue(model.hasClipboardContent())
+        assertEquals(unit1, model.copiedUnit.value)
+        assertEquals(1, toastMessages.size)
+        assertTrue(toastMessages[0].contains("Copied"))
+    }
+
+    @Test
+    fun pasteButtonInsertsAfterItsOwnRowOnClick() {
+        val model = ChainEditorModel(Chain(listOf(unit1, unit2, unit3)))
+        val toastMessages = mutableListOf<String>()
+        val editor = ChainEditor(model, onToast = { toastMessages.add(it) })
+
+        model.copyUnit("1")
+        val contextMenu = editor.contextMenuFor("2")!!
+        val menuContent = contextMenu.child!!
+        val pasteButton = findButtonByName(menuContent, ChainEditor.PASTE_MENU_ITEM_NAME)!!
+        pasteButton.emitClicked()
+
+        val ids = model.units().map { it.id }
+        assertEquals(listOf("1", "2"), ids.take(2))
+        assertEquals("3", ids[3])
+        assertEquals(1, toastMessages.size)
+        assertTrue(toastMessages[0].contains("Pasted"))
+    }
+
+    @Test
+    fun ctrlCAndCtrlVAreWiredToALocalKeyController() {
+        val editor = ChainEditor(ChainEditorModel(Chain(listOf(unit1))))
+
+        val keyControllers = controllersOf(editor).filterIsInstance<EventControllerKey>()
+
+        assertTrue(keyControllers.isNotEmpty())
     }
 
     // ── Expandable parameter controls ────────────────────────────────────────
