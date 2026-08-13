@@ -39,6 +39,9 @@ sealed interface AudioCommand {
     /** Enable or disable the built-in input noise gate. */
     data class SetNoiseGateEnabled(val enabled: Boolean) : AudioCommand
 
+    /** Enable or disable raw-input capture for tuner pitch detection. */
+    data class SetTunerCaptureEnabled(val enabled: Boolean) : AudioCommand
+
     /** Set the noise gate's threshold in dB (clamped by [NoiseGate.thresholdDb]). */
     data class SetNoiseGateThreshold(val thresholdDb: Float) : AudioCommand
 

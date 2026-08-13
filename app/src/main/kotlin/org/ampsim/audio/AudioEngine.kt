@@ -1,6 +1,7 @@
 package org.ampsim.audio
 
 import java.nio.FloatBuffer
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -62,6 +63,22 @@ class AudioEngine(
     @Volatile private var inputLevel = 0f
     @Volatile private var outputLevel = 0f
     @Volatile private var cpuLoadEstimate = 0f
+
+    // ---- Tuner sample capture (audio thread -> control thread) --------------
+    // Raw (post-noise-gate, pre-DSP-chain) input, captured into a contiguous
+    // window for pitch detection. Three pre-allocated fixed-size slots, filled
+    // sequentially by the RT thread; the control thread reads whichever slot
+    // was most recently completed. Three (not two) slots because filling one
+    // ~4096-sample window takes close to the ~100ms cadence the control thread
+    // polls at - two slots would leave almost no headroom before the RT thread
+    // revisits a slot the control thread might still be copying out of.
+
+    private var tunerCaptureSlots: Array<FloatArray> =
+        Array(TUNER_CAPTURE_SLOT_COUNT) { FloatArray(TUNER_CAPTURE_WINDOW_SAMPLES) }
+    private var tunerWriteSlot = 0
+    private var tunerWriteIndex = 0
+    private var rtTunerCaptureEnabled = false
+    private val tunerLatestSlot = AtomicInteger(-1)
 
     // ---- Real-time thread owned state (only touched inside process()) -------
 
@@ -178,6 +195,27 @@ class AudioEngine(
     /** Set the noise gate's threshold in dB. */
     fun setNoiseGateThreshold(thresholdDb: Float) {
         enqueue(AudioCommand.SetNoiseGateThreshold(thresholdDb))
+    }
+
+    /**
+     * Enable or disable raw-input capture for the tuner. Gated off by default
+     * so the copy (cheap but non-zero) is only paid while the Tuner tab is
+     * open, not for the app's entire lifetime.
+     */
+    fun setTunerCaptureEnabled(enabled: Boolean) {
+        enqueue(AudioCommand.SetTunerCaptureEnabled(enabled))
+    }
+
+    /**
+     * The most recently completed tuner capture window (raw, pre-DSP-chain
+     * input), or `null` if capture is disabled or no window has completed
+     * yet. Returns a defensive copy - safe to call from the control thread
+     * on a timer.
+     */
+    fun pollTunerWindow(): FloatArray? {
+        val slot = tunerLatestSlot.get()
+        if (slot < 0) return null
+        return tunerCaptureSlots[slot].copyOf()
     }
 
     // -------------------------------------------------------------------------
@@ -415,6 +453,13 @@ class AudioEngine(
         }
         inputLevel = kotlin.math.sqrt(inputSumSquares / framesToCopy)
 
+        // Tuner capture: same raw (post-gate, pre-chain) signal as the input
+        // metering above, so a tuner reads a clean signal and a gated-out
+        // decaying note correctly reads as silence rather than chasing noise.
+        if (rtTunerCaptureEnabled) {
+            writeTunerCapture(input, framesToCopy)
+        }
+
         // Run the DSP chain (or pass through when empty), blending against a
         // decaying outgoing chain if a crossfade is in progress. One read of
         // the bundled state so `chain` and its timing array below always
@@ -575,6 +620,42 @@ class AudioEngine(
             is AudioCommand.SetPlayback -> rtPlaybackEnabled = command.enabled
             is AudioCommand.SetNoiseGateEnabled -> noiseGate.enabled = command.enabled
             is AudioCommand.SetNoiseGateThreshold -> noiseGate.thresholdDb = command.thresholdDb
+            is AudioCommand.SetTunerCaptureEnabled -> {
+                rtTunerCaptureEnabled = command.enabled
+                if (!command.enabled) {
+                    // Start clean next time capture is enabled, so the UI
+                    // never sees a stale window from a previous tuning session.
+                    tunerWriteSlot = 0
+                    tunerWriteIndex = 0
+                    tunerLatestSlot.set(-1)
+                }
+            }
+        }
+    }
+
+    /**
+     * Copy [framesToCopy] raw input samples into the current tuner capture
+     * slot, splitting across a slot boundary if needed. Pure array/int
+     * arithmetic - no allocation, no blocking. Runs on the audio thread.
+     */
+    private fun writeTunerCapture(input: FloatBuffer, framesToCopy: Int) {
+        var remaining = framesToCopy
+        var srcIndex = 0
+        while (remaining > 0) {
+            val slot = tunerCaptureSlots[tunerWriteSlot]
+            val spaceInSlot = slot.size - tunerWriteIndex
+            val toWrite = minOf(remaining, spaceInSlot)
+            for (i in 0 until toWrite) {
+                slot[tunerWriteIndex + i] = input.get(srcIndex + i)
+            }
+            tunerWriteIndex += toWrite
+            srcIndex += toWrite
+            remaining -= toWrite
+            if (tunerWriteIndex >= slot.size) {
+                tunerLatestSlot.set(tunerWriteSlot)
+                tunerWriteSlot = (tunerWriteSlot + 1) % TUNER_CAPTURE_SLOT_COUNT
+                tunerWriteIndex = 0
+            }
         }
     }
 
@@ -648,6 +729,8 @@ class AudioEngine(
         private const val RETIRED_QUEUE_CAPACITY = 16
         private const val DEFAULT_MAX_BLOCK = 8192
         const val DEFAULT_CROSSFADE_MS = 200
+        private const val TUNER_CAPTURE_WINDOW_SAMPLES = 4096
+        private const val TUNER_CAPTURE_SLOT_COUNT = 3
 
         private val logger: Logger = Logger.getLogger(AudioEngine::class.java.name)
     }

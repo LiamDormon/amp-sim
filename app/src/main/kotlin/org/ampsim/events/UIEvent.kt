@@ -4,6 +4,7 @@ import org.ampsim.audio.AudioStatus
 import org.ampsim.model.Chain
 import org.ampsim.model.EffectUnit
 import org.ampsim.model.Preset
+import org.ampsim.tuner.PitchEstimate
 
 /**
  * Immutable events broadcast over a [UIEventBus] for reactive UI updates and
@@ -35,4 +36,7 @@ sealed class UIEvent {
 
     /** Something went wrong; [message] is safe to show to the user. [source] names the origin. */
     data class ErrorOccurred(val message: String, val source: String? = null) : UIEvent()
+
+    /** The tuner's most recent pitch-detection result, or `null` if no signal is currently detected. */
+    data class PitchDetected(val estimate: PitchEstimate?) : UIEvent()
 }

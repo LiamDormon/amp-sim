@@ -22,6 +22,7 @@ import org.ampsim.ui.dashboard.DashboardView
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
 import org.ampsim.ui.settings.SettingsView
+import org.ampsim.ui.tuner.TunerView
 
 @GtkTemplate(name="AppWindow", ui = "/org/ampsim/mainwindow.ui")
 class AppWindow : ApplicationWindow {
@@ -88,6 +89,10 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "settings_host")
     @JvmField
     var settingsHost: Box? = null
+
+    @GtkChild(name = "tuner_host")
+    @JvmField
+    var tunerHost: Box? = null
 
     @GtkChild(name = "content_stack")
     @JvmField
@@ -204,6 +209,14 @@ class AppWindow : ApplicationWindow {
     fun bindDashboardView(view: DashboardView) {
         dashboardHost?.append(view)
     }
+
+    /** Mount the Tuner tab's view widget into its host container. */
+    fun bindTunerView(view: TunerView) {
+        tunerHost?.append(view)
+    }
+
+    /** Whether the playback (audio output) toggle is currently active — used to snapshot/restore prior state when entering/leaving the Tuner tab. */
+    fun isPlaybackEnabled(): Boolean = playbackToggle?.active ?: true
 
     /** Switch the content ViewStack to the page named [name] (e.g. "presets", "settings"). */
     fun showPage(name: String) {

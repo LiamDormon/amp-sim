@@ -111,5 +111,28 @@ class AppConfigurationValidationTest {
             RealTimeConfiguration(retiredQueueCapacity = 257)
         }
     }
+
+    @Test
+    fun tunerConfigurationRejectsInvalidValues() {
+        assertFailsWith<IllegalArgumentException> {
+            TunerConfiguration(referencePitchHz = 399f)
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            TunerConfiguration(referencePitchHz = 481f)
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            TunerConfiguration(tuningId = "")
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            TunerConfiguration(lastManualStringNumber = 0)
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            TunerConfiguration(lastManualStringNumber = -1)
+        }
+    }
 }
 

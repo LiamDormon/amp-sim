@@ -8,6 +8,7 @@
     <file>css/library.css</file>
     <file>css/dashboard.css</file>
     <file>css/settings.css</file>
+    <file>css/tuner.css</file>
   </gresource>
 </gresources>
 

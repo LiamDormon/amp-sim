@@ -29,3 +29,6 @@ fun UIEventBus.unitRemoved(): Flow<UIEvent.UnitRemoved> = eventsOfType()
 
 /** Only [UIEvent.ErrorOccurred] events. */
 fun UIEventBus.errorOccurred(): Flow<UIEvent.ErrorOccurred> = eventsOfType()
+
+/** Only [UIEvent.PitchDetected] events. */
+fun UIEventBus.pitchDetected(): Flow<UIEvent.PitchDetected> = eventsOfType()
