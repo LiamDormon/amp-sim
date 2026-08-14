@@ -9,6 +9,7 @@
     <file>css/dashboard.css</file>
     <file>css/settings.css</file>
     <file>css/tuner.css</file>
+    <file>css/recording-booth.css</file>
   </gresource>
 </gresources>
 

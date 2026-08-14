@@ -317,6 +317,19 @@ template $AppWindow: Adw.ApplicationWindow {
             };
           }
 
+          // Page 4.5 ── Recording Booth
+          Adw.ViewStackPage {
+            name: "recording";
+            title: _("Recording");
+            icon-name: "audio-input-microphone-symbolic";
+
+            child: Gtk.Box recording_booth_host {
+              orientation: vertical;
+              vexpand: true;
+              hexpand: true;
+            };
+          }
+
           // Page 5 ── Settings
           Adw.ViewStackPage {
             name: "settings";

@@ -80,6 +80,18 @@ class AudioEngine(
     private var rtTunerCaptureEnabled = false
     private val tunerLatestSlot = AtomicInteger(-1)
 
+    // ---- Recording sample capture (audio thread -> control thread) ----------
+    // Finished wet (post-chain) output, captured losslessly into a large
+    // ring buffer for a background writer thread to drain to a WAV file.
+    // Unlike tuner capture's rotating slots (which only care about the
+    // latest window), recording must not drop samples under normal
+    // operation - see FloatRingBuffer's doc comment for why this needs its
+    // own primitive rather than reusing LockFreeRingBuffer<T>.
+
+    private var rtRecordingEnabled = false
+    private val recordingRingBuffer = FloatRingBuffer(RECORDING_RING_CAPACITY_SAMPLES)
+    private val recordingOverrunCount = AtomicLong(0)
+
     // ---- Real-time thread owned state (only touched inside process()) -------
 
     /**
@@ -217,6 +229,32 @@ class AudioEngine(
         if (slot < 0) return null
         return tunerCaptureSlots[slot].copyOf()
     }
+
+    /**
+     * Enable or disable capture of the finished wet (post-chain) output into
+     * the recording ring buffer. Independent of [setPlaybackEnabled] - a
+     * take can be recorded while the monitor is muted.
+     */
+    fun setRecordingEnabled(enabled: Boolean) {
+        enqueue(AudioCommand.SetRecordingEnabled(enabled))
+    }
+
+    /**
+     * Drain up to [maxCount] captured recording samples into [dst] (starting
+     * at index 0). Returns the number of samples actually read (0 if none
+     * are currently buffered). Control-thread only - intended to be called
+     * repeatedly by a dedicated drain loop while a take is in progress.
+     */
+    fun pollRecordingCapture(dst: FloatArray, maxCount: Int): Int =
+        recordingRingBuffer.read(dst, 0, maxCount)
+
+    /**
+     * Cumulative count of recording samples dropped because the capture ring
+     * buffer was full (the consumer fell behind the real-time producer).
+     * Monotonic for the engine's lifetime - callers wanting a per-take figure
+     * should snapshot this at record-start and diff against it.
+     */
+    fun getRecordingOverrunCount(): Long = recordingOverrunCount.get()
 
     // -------------------------------------------------------------------------
     // Routing / device selection (not part of the real-time path)
@@ -554,6 +592,20 @@ class AudioEngine(
             }
         }
 
+        // Recording tap: capture the finished wet (post-chain) output before
+        // the mute/metering block below may zero it out - independent of
+        // rtPlaybackEnabled so a take can be recorded while monitoring is
+        // muted (e.g. to avoid a feedback loop). Whichever branch above ran,
+        // `output` already holds exactly what the listener would hear
+        // (including a mid-crossfade blend), so one tap point here is
+        // correct for all three cases.
+        if (rtRecordingEnabled) {
+            val written = recordingRingBuffer.write(output, framesToCopy)
+            if (written < framesToCopy) {
+                recordingOverrunCount.addAndGet((framesToCopy - written).toLong())
+            }
+        }
+
         // Output metering + optional silence when playback is disabled.
         var outputSumSquares = 0f
         if (rtPlaybackEnabled) {
@@ -629,6 +681,14 @@ class AudioEngine(
                     tunerWriteIndex = 0
                     tunerLatestSlot.set(-1)
                 }
+            }
+            is AudioCommand.SetRecordingEnabled -> {
+                // No reset-on-disable bookkeeping needed (unlike tuner
+                // capture): the ring buffer just stops receiving new
+                // samples, and whatever it's still holding continues to
+                // drain normally, giving a clean recorded tail instead of
+                // an abrupt cutoff.
+                rtRecordingEnabled = command.enabled
             }
         }
     }
@@ -731,6 +791,9 @@ class AudioEngine(
         const val DEFAULT_CROSSFADE_MS = 200
         private const val TUNER_CAPTURE_WINDOW_SAMPLES = 4096
         private const val TUNER_CAPTURE_SLOT_COUNT = 3
+        // ~8MB, ~10s of headroom at 192kHz (more at typical 44.1/48kHz) so a
+        // transient disk/GC hiccup on the consumer side never touches the RT thread.
+        private const val RECORDING_RING_CAPACITY_SAMPLES = 2_000_000
 
         private val logger: Logger = Logger.getLogger(AudioEngine::class.java.name)
     }
