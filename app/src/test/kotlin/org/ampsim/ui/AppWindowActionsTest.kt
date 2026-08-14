@@ -12,7 +12,7 @@ class AppWindowActionsTest {
     fun ensureAppWindowIsRegistered() = AppWindowTestSupport.ensureAppWindowIsRegistered()
 
     private fun noopHandlers() = AppWindowActionHandlers(
-        showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showSettings = {},
+        showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {},
         toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
     )
 
@@ -23,7 +23,7 @@ class AppWindowActionsTest {
 
         assertEquals(
             setOf(
-                "show-dashboard", "show-chain-editor", "show-presets", "show-tuner", "show-settings",
+                "show-dashboard", "show-chain-editor", "show-presets", "show-tuner", "show-recording", "show-settings",
                 "toggle-library", "save", "load", "new-chain", "undo", "redo"
             ),
             actions.keys
@@ -37,7 +37,7 @@ class AppWindowActionsTest {
         val actions = window.registerWindowActions(
             AppWindowActionHandlers(
                 showDashboard = { invoked = true },
-                showChainEditor = {}, showPresets = {}, showTuner = {}, showSettings = {},
+                showChainEditor = {}, showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {},
                 toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
         )
@@ -54,7 +54,7 @@ class AppWindowActionsTest {
             AppWindowActionHandlers(
                 showDashboard = { window.showPage("dashboard") },
                 showChainEditor = { window.showPage("editor") },
-                showPresets = {}, showTuner = {}, showSettings = {}, toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
+                showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {}, toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
         )
 
@@ -68,7 +68,7 @@ class AppWindowActionsTest {
         val window = AppWindow()
         val actions = window.registerWindowActions(
             AppWindowActionHandlers(
-                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showSettings = {},
+                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {},
                 toggleLibrary = { window.toggleLibraryPanel() },
                 save = {}, load = {}, newChain = {}, undo = {}, redo = {}
             )
@@ -86,7 +86,7 @@ class AppWindowActionsTest {
         var invoked = false
         val actions = window.registerWindowActions(
             AppWindowActionHandlers(
-                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showSettings = {},
+                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {},
                 toggleLibrary = {}, save = {}, load = {}, newChain = {},
                 undo = { invoked = true }, redo = {}
             )
@@ -103,7 +103,7 @@ class AppWindowActionsTest {
         var invoked = false
         val actions = window.registerWindowActions(
             AppWindowActionHandlers(
-                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showSettings = {},
+                showDashboard = {}, showChainEditor = {}, showPresets = {}, showTuner = {}, showRecording = {}, showSettings = {},
                 toggleLibrary = {}, save = {}, load = {}, newChain = {}, undo = {},
                 redo = { invoked = true }
             )

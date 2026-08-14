@@ -90,11 +90,23 @@ class MetricsSamplerTest {
     @Test
     fun heapUsedReflectsRealAllocationGrowth() {
         val engine = AudioEngine()
+        // MetricsSampler reports raw Runtime.totalMemory()-freeMemory(), a
+        // global JVM figure, not something scoped to this test - in a full
+        // suite run sharing one JVM across hundreds of tests, a GC cycle
+        // concurrent with just the "before" sample can reclaim enough of
+        // some *other* test's leftover garbage to make heap usage appear to
+        // shrink even though this test's own allocation below is still very
+        // much alive, making a bare before/after comparison flaky. Forcing a
+        // GC immediately before each sample settles both measurements to the
+        // genuinely-live set at that instant, so the only thing that can
+        // explain a difference between them is bigArray itself.
+        System.gc()
         val before = MetricsSampler.sample(engine, AudioStatus()).heapUsedBytes
 
         // Force real heap growth the sampler should observe. Kept in a local
         // val so it can't be optimized away before the second sample.
         val bigArray = LongArray(2_000_000) { it.toLong() }
+        System.gc()
         val after = MetricsSampler.sample(engine, AudioStatus()).heapUsedBytes
 
         assertTrue(after > before, "expected heapUsedBytes to grow after a ~16MB allocation: before=$before after=$after")

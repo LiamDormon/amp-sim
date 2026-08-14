@@ -21,6 +21,7 @@ import org.ampsim.ui.chain.Dial
 import org.ampsim.ui.dashboard.DashboardView
 import org.ampsim.ui.library.LibraryView
 import org.ampsim.ui.preset.PresetsView
+import org.ampsim.ui.recording.RecordingBoothView
 import org.ampsim.ui.settings.SettingsView
 import org.ampsim.ui.tuner.TunerView
 
@@ -93,6 +94,10 @@ class AppWindow : ApplicationWindow {
     @GtkChild(name = "tuner_host")
     @JvmField
     var tunerHost: Box? = null
+
+    @GtkChild(name = "recording_booth_host")
+    @JvmField
+    var recordingBoothHost: Box? = null
 
     @GtkChild(name = "content_stack")
     @JvmField
@@ -213,6 +218,11 @@ class AppWindow : ApplicationWindow {
     /** Mount the Tuner tab's view widget into its host container. */
     fun bindTunerView(view: TunerView) {
         tunerHost?.append(view)
+    }
+
+    /** Mount the Recording Booth tab's view widget into its host container. */
+    fun bindRecordingBoothView(view: RecordingBoothView) {
+        recordingBoothHost?.append(view)
     }
 
     /** Whether the playback (audio output) toggle is currently active — used to snapshot/restore prior state when entering/leaving the Tuner tab. */

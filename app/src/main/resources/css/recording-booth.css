@@ -1,0 +1,222 @@
+/* Recording Booth tab — a tape-deck/rack-unit transport up top, a Presets-
+ * style library below.
+ *
+ * Follows the design system documented at the top of chain-editor.css
+ * (theme-derived surfaces/text, alpha(#000/#fff,…) for theme-independent
+ * edges and recesses, @amp_accent reserved for "this is live"). GTK scopes
+ * @define-color per CssProvider, so the shared tokens are redeclared here —
+ * same values as dashboard.css/chain-editor.css/tuner.css, not a new palette.
+ *
+ * Two zones:
+ *
+ *   - TRANSPORT   one recessed instrument-panel cavity (.recording-booth-
+ *                 instrument-panel), the same "routed into the chassis"
+ *                 language as .dashboard-instrument-panel — record button,
+ *                 tape-counter readout and the reused VuMeter read as one
+ *                 unit, not three widgets. The record button itself is
+ *                 styled as a real transport button (a lit cap, not a bare
+ *                 icon), and armed/recording gets a slow, physical-feeling
+ *                 pulse rather than a static color swap.
+ *
+ *   - LIBRARY     deliberately as plain as presets.css: a PreferencesGroup
+ *                 of stock Adw.ActionRows, no custom row background beyond
+ *                 the restrained .playing accent stripe (new to this tab —
+ *                 Presets has no precedent, so this is the one place this
+ *                 file makes its own call rather than copying one).
+ *
+ * The mini playback transport (.recording-booth-transport-bar) for
+ * auditioning a past take reuses the same amber "live position" language as
+ * a signal meter: the seek bar's filled highlight is @amp_accent because it
+ * literally tracks live playback position, same justification the LED
+ * ladder meters use elsewhere.
+ */
+
+@define-color amp_accent #e8a251;
+@define-color amp_accent_dark #b5661f;
+@define-color amp_accent_deep #c97e2e;
+@define-color amp_accent_soft #eab476;
+@define-color led_red #f2555a;
+
+/* Named so it's a documented token rather than bare magic hex — same value
+ * as dashboard.css's own, tuned for contrast against @amp_accent. */
+@define-color amp_accent_fg #1a1005;
+
+/* Shared with chain-editor.css: the neutral cap/slider material used on any
+ * hardware-style control's moving part (switch sliders, the seek scrubber
+ * here) so every "thing you physically drag" in the app matches. */
+@define-color amp_knob_highlight #d8dade;
+
+.recording-booth-view {
+  background-color: @window_bg_color;
+}
+
+/* ── Transport: instrument panel ─────────────────────────────────────────── */
+
+/* Identical recessed-cavity treatment to .dashboard-instrument-panel — this
+ * tab's one instrument gets the same "routed into the chassis" framing as
+ * every other control cluster in the app. */
+.recording-booth-instrument-panel {
+  padding: 1em 1.125em;
+  background-color: alpha(#000, 0.18);
+  border: 1px solid alpha(#000, 0.35);
+  border-radius: 0.625em;
+  box-shadow: inset 0 0.125em 0.1875em alpha(#000, 0.3);
+}
+
+/* The record button is a real transport button, not a bare icon: a domed
+ * cap with a top bevel and a resting shadow, sized like the app's other
+ * primary round control (chain-dial-knob is the same 2.75em). */
+.recording-booth-record-button {
+  min-width: 2.75em;
+  min-height: 2.75em;
+  padding: 0;
+  border-radius: 999px;
+  background-color: alpha(#000, 0.3);
+  background-image:
+    radial-gradient(circle at 32% 28%, alpha(#fff, 0.16), transparent 60%),
+    linear-gradient(to bottom, alpha(#fff, 0.08), alpha(#000, 0.12));
+  border: 1px solid alpha(#000, 0.5);
+  box-shadow:
+    0 0.125em 0.25em alpha(#000, 0.4),
+    inset 0 0.0625em 0 alpha(#fff, 0.08);
+  color: alpha(@window_fg_color, 0.7);
+  transition: color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.recording-booth-record-button:hover {
+  color: @led_red;
+  border-color: alpha(@led_red, 0.5);
+}
+
+.recording-booth-record-button:active {
+  box-shadow: inset 0 0.0625em 0.1875em alpha(#000, 0.4);
+}
+
+/* Recording: the cap itself lights up red and breathes, like a physical
+ * armed-record LED rather than a flat color swap — set as a CSS class by
+ * RecordingBoothView (not a GTK state), see the animation below. */
+.recording-booth-record-button--active {
+  color: @amp_accent_fg;
+  background-color: @led_red;
+  background-image: linear-gradient(to bottom, alpha(#fff, 0.28), transparent 65%);
+  border-color: alpha(@led_red, 0.7);
+  animation: recording-booth-record-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes recording-booth-record-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0.4375em 0.0625em alpha(@led_red, 0.55),
+      inset 0 0.0625em 0 alpha(#fff, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0.9375em 0.1875em alpha(@led_red, 0.9),
+      inset 0 0.0625em 0 alpha(#fff, 0.25);
+  }
+}
+
+/* Tape-counter readout: the same lit recessed-well language as
+ * .chain-dial-value, amber digits in a dark cavity. */
+.recording-booth-elapsed {
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  font-size: 1.0625em;
+  font-weight: 700;
+  color: @amp_accent_soft;
+  padding: 0.25em 0.625em;
+  background-color: alpha(#000, 0.55);
+  border: 1px solid alpha(#000, 0.5);
+  border-radius: 0.25em;
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.5);
+}
+
+/* ── Overrun banner ──────────────────────────────────────────────────────── */
+
+/* libadwaita's own warning pairing (same one Adw.Banner/entry.warning use) —
+ * urgent enough to notice, not the destructive/error red this app reserves
+ * for actual failure. Themed automatically in light and dark. */
+.recording-booth-overrun-banner {
+  padding: 0.5em 0.875em;
+  background-color: @warning_bg_color;
+  color: @warning_fg_color;
+  font-weight: 600;
+  font-size: 0.875em;
+  border-radius: 0.5em;
+}
+
+/* ── Playback mini-transport ─────────────────────────────────────────────── */
+
+/* A quieter strip than the record instrument panel — this is for auditioning
+ * an existing take, not the main event of the tab. */
+.recording-booth-transport-bar {
+  padding: 0.375em 0.75em;
+  background-color: alpha(@window_fg_color, 0.04);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  border-radius: 0.5em;
+}
+
+.recording-booth-transport-position,
+.recording-booth-transport-duration {
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  font-size: 0.75em;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.55);
+}
+
+/* Seek scrubber, restyled the same way .chain-unit-toggle re-skins a stock
+ * GtkSwitch: a recessed trough, an amber fill because it tracks live
+ * playback position, and the app's shared knob-highlight material for the
+ * thumb you actually drag. */
+.recording-booth-transport-bar scale trough {
+  min-height: 0.375em;
+  background-color: alpha(#000, 0.4);
+  border-radius: 999px;
+  box-shadow: inset 0 0.0625em 0.125em alpha(#000, 0.5);
+}
+
+.recording-booth-transport-bar scale highlight {
+  background-color: @amp_accent;
+  border-radius: 999px;
+}
+
+.recording-booth-transport-bar scale slider {
+  /* Adwaita's stock slider node carries its own negative margin (to expand
+   * the hit-region past the drawn thumb) sized against its own default
+   * min-width/min-height - overriding just the size here without also
+   * resetting margin left the two disagreeing, which GTK reported as a
+   * negative computed size. Reset it so this thumb's box model is
+   * self-consistent. */
+  margin: 0;
+  min-width: 0.875em;
+  min-height: 0.875em;
+  background-color: @amp_knob_highlight;
+  border-radius: 999px;
+  box-shadow: 0 0.0625em 0.125em alpha(#000, 0.4);
+}
+
+/* ── Library (Presets-style restraint) ───────────────────────────────────── */
+
+.recording-booth-context-menu {
+  padding: 0.25em;
+}
+
+.recording-booth-context-menu-popover {
+  padding: 0;
+}
+
+/* Currently-playing row: no precedent elsewhere in the app (Presets has no
+ * active-row state), so kept to the same restrained gesture selection
+ * already uses one tab over — an accent ring layered on top of the stock
+ * row rather than a new background treatment (see chain-unit-row--selected
+ * in chain-editor.css). Here that becomes a left accent stripe, closer to a
+ * tape deck's lit "playing" tab than a full selection highlight. */
+row.playing {
+  background-color: alpha(@amp_accent, 0.08);
+  box-shadow: inset 0.1875em 0 0 0 @amp_accent;
+}
+
+row.playing .title {
+  color: @amp_accent_soft;
+}

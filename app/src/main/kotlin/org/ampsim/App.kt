@@ -43,6 +43,11 @@ import org.ampsim.persistence.FileSystemPresetRepository
 import org.ampsim.persistence.FileSystemProfileRepository
 import org.ampsim.persistence.PresetRepository
 import org.ampsim.persistence.ProfileRepository
+import org.ampsim.persistence.FileSystemRecordingRepository
+import org.ampsim.persistence.RecordingRepository
+import org.ampsim.recording.PlaybackState
+import org.ampsim.recording.RecordingCaptureService
+import org.ampsim.recording.RecordingPlaybackService
 import org.ampsim.tuner.BuiltInTunings
 import org.ampsim.tuner.TunerMode
 import org.ampsim.tuner.TunerSampler
@@ -60,6 +65,8 @@ import org.ampsim.ui.library.LibraryViewModel
 import org.ampsim.ui.preset.PresetsView
 import org.ampsim.ui.preset.PresetsViewModel
 import org.ampsim.ui.preset.SavePresetDialog
+import org.ampsim.ui.recording.RecordingBoothView
+import org.ampsim.ui.recording.RecordingBoothViewModel
 import org.ampsim.ui.settings.SettingsView
 import org.ampsim.ui.settings.SettingsViewModel
 import org.ampsim.ui.tuner.TunerView
@@ -149,6 +156,16 @@ class App {
     )
     private var tunerTabActive = false
     private var playbackEnabledBeforeTuner = true
+
+    val recordingRepository: RecordingRepository = FileSystemRecordingRepository()
+    val recordingCaptureService = RecordingCaptureService(audioEngine, recordingRepository)
+    val recordingPlaybackService = RecordingPlaybackService()
+    val recordingBoothViewModel = RecordingBoothViewModel(
+        recordingRepository,
+        recordingProgress = recordingCaptureService.progress,
+        playbackState = recordingPlaybackService.state,
+        meterLevel = eventBus.audioStatusChanged().map { it.status.outputLevel }
+    )
 
     /** Guards the one-time bootstrap restart in [applyInitialRealTimeConfigIfNeeded] that applies a persisted, non-default [RealTimeConfiguration] on cold launch. */
     private var appliedInitialRealTimeConfig = false
@@ -638,6 +655,77 @@ class App {
     }
 
     /**
+     * Bind the Recording Booth tab's transport/library view. This view owns
+     * no service/repository I/O of its own — every callback here orchestrates
+     * [recordingCaptureService]/[recordingPlaybackService]/[recordingRepository]
+     * together, the same split as [bindPresetsView]. Errors surface through
+     * the same `eventBus.errorOccurred()` → toast subscription [bindPresetsView]
+     * already sets up — no second subscription needed here.
+     */
+    fun bindRecordingBoothView(window: AppWindow) {
+        val view = RecordingBoothView(
+            model = recordingBoothViewModel,
+            scope = uiCoroutineScope,
+            onRecordToggleRequested = {
+                if (recordingCaptureService.progress.value != null) {
+                    recordingCaptureService.stopRecording()
+                } else {
+                    recordingCaptureService.startRecording()
+                }
+            },
+            onPlayRequested = { name ->
+                val summary = recordingRepository.recordings.value.find { it.name == name }
+                if (summary != null) {
+                    uiCoroutineScope.launch { recordingPlaybackService.play(summary) }
+                }
+            },
+            onPauseRequested = { recordingPlaybackService.pause() },
+            onStopPlaybackRequested = { recordingPlaybackService.stop() },
+            onSeekRequested = { micros -> recordingPlaybackService.seekTo(micros) },
+            onRenameRequested = { oldName, newName ->
+                uiCoroutineScope.launch {
+                    val result = recordingRepository.rename(oldName, newName)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Rename failed: ${e.message}", "RecordingBoothView"))
+                        }
+                        false
+                    }
+                }
+            },
+            onExportRequested = { name, destination ->
+                uiCoroutineScope.launch {
+                    val result = recordingRepository.export(name, destination)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Export failed: ${e.message}", "RecordingBoothView"))
+                        }
+                        false
+                    }
+                }
+            },
+            onDeleteRequested = { name ->
+                val currentlyPlayingName = when (val playback = recordingPlaybackService.state.value) {
+                    is PlaybackState.Playing -> playback.name
+                    is PlaybackState.Paused -> playback.name
+                    PlaybackState.Idle -> null
+                }
+                if (name == currentlyPlayingName) recordingPlaybackService.stop()
+                uiCoroutineScope.launch {
+                    val result = recordingRepository.delete(name)
+                    GLib.idleAdd(0) {
+                        result.onFailure { e ->
+                            eventBus.publish(UIEvent.ErrorOccurred("Delete failed: ${e.message}", "RecordingBoothView"))
+                        }
+                        false
+                    }
+                }
+            }
+        )
+        window.bindRecordingBoothView(view)
+    }
+
+    /**
      * Decode+validate [file] off the I/O dispatcher; if the decoded preset's
      * name collides with one already in the library, hand off to [view] to
      * ask how to resolve it (Overwrite/Rename/Cancel) before writing
@@ -687,12 +775,21 @@ class App {
     }
 
     fun destroy() {
+        // Finalize any take still in progress (and stop the service's own
+        // scope) before audioEngine.stop() - flushForShutdown() disables
+        // capture and drains the ring buffer itself, so ordering relative to
+        // audioEngine.stop() doesn't matter here, but doing it first means a
+        // recording in progress is never silently abandoned on quit.
+        recordingCaptureService.flushForShutdown()
+        recordingCaptureService.cancel()
+        recordingPlaybackService.close()
         audioEngine.stop()
         autoSaveService.stop()
         configManager.cancel()
         (presetRepository as? FileSystemPresetRepository)?.cancel()
         (autoSaveRepository as? FileSystemPresetRepository)?.cancel()
         (profileRepository as? FileSystemProfileRepository)?.cancel()
+        (recordingRepository as? FileSystemRecordingRepository)?.cancel()
         uiCoroutineScope.cancel()
         eventBus.close()
     }
@@ -764,6 +861,14 @@ fun main(args: Array<String>) {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+        val recordingBoothCssProvider = CssProvider()
+        recordingBoothCssProvider.loadFromResource("/org/ampsim/css/recording-booth.css")
+        Gtk.styleContextAddProviderForDisplay(
+            Display.getDefault(),
+            recordingBoothCssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         val mainWindow = AppWindow()
         mainWindow.setApplication(app)
         // Backs the hamburger menu's already-present but previously-dead
@@ -779,6 +884,7 @@ fun main(args: Array<String>) {
         appInstance.bindPresetsView(mainWindow)
         appInstance.bindDashboardView(mainWindow)
         appInstance.bindTunerView(mainWindow)
+        appInstance.bindRecordingBoothView(mainWindow)
         appInstance.bindSettingsView(mainWindow)
 
         // The sidebar's Adw.ViewSwitcherSidebar is bound directly to
@@ -806,6 +912,7 @@ fun main(args: Array<String>) {
                 showChainEditor = { mainWindow.showPage("editor") },
                 showPresets = { mainWindow.showPage("presets") },
                 showTuner = { mainWindow.showPage("tuner") },
+                showRecording = { mainWindow.showPage("recording") },
                 showSettings = { mainWindow.showPage("settings") },
                 toggleLibrary = { mainWindow.toggleLibraryPanel() },
                 save = { appInstance.openSavePresetDialog(mainWindow) },
@@ -823,6 +930,7 @@ fun main(args: Array<String>) {
         // appears before Settings in tab order — Tuner is a new tab, so
         // <Alt>5 avoids silently breaking muscle memory/docs for the existing four.
         app.setAccelsForAction("win.show-tuner", arrayOf("<Alt>5"))
+        app.setAccelsForAction("win.show-recording", arrayOf("<Alt>6"))
         app.setAccelsForAction("win.toggle-library", arrayOf("<Primary>b"))
         app.setAccelsForAction("win.save", arrayOf("<Primary>s"))
         app.setAccelsForAction("win.load", arrayOf("<Primary>l"))
@@ -856,6 +964,15 @@ fun main(args: Array<String>) {
         // Tuner tab is actually visible, so this costs nothing while closed.
         GLib.timeoutAdd(0, 100) {
             appInstance.sampleAndPublishTunerPitch()
+            true
+        }
+
+        // Same 100ms cadence as the tuner timer above; pollPosition() itself
+        // no-ops unless something is actually playing, so this costs nothing
+        // the rest of the time. javax.sound.sampled's Clip has no push-based
+        // position API, so polling is the only option.
+        GLib.timeoutAdd(0, 100) {
+            appInstance.recordingPlaybackService.pollPosition()
             true
         }
 

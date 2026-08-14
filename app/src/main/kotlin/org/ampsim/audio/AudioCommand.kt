@@ -42,6 +42,13 @@ sealed interface AudioCommand {
     /** Enable or disable raw-input capture for tuner pitch detection. */
     data class SetTunerCaptureEnabled(val enabled: Boolean) : AudioCommand
 
+    /**
+     * Enable or disable capture of the finished wet (post-chain) output into
+     * the recording ring buffer. Independent of [SetPlayback] — a take can be
+     * recorded while the monitor is muted.
+     */
+    data class SetRecordingEnabled(val enabled: Boolean) : AudioCommand
+
     /** Set the noise gate's threshold in dB (clamped by [NoiseGate.thresholdDb]). */
     data class SetNoiseGateThreshold(val thresholdDb: Float) : AudioCommand
 
