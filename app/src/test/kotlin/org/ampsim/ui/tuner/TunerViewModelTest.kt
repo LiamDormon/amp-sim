@@ -93,6 +93,34 @@ class TunerViewModelTest {
         assertEquals(BuiltInTunings.STANDARD.strings, state.availableTargets)
     }
 
+    @Test
+    fun availableTargetsReflectDropDWhenThatsTheActiveTuning() = runBlocking {
+        val state = TunerViewModel(
+            pitchEstimates = MutableStateFlow<PitchEstimate?>(null),
+            referencePitch = MutableStateFlow(440f),
+            activeTuning = MutableStateFlow(BuiltInTunings.DROP_D)
+        ).state.first()
+
+        assertEquals(BuiltInTunings.DROP_D.strings, state.availableTargets)
+        assertEquals("drop-d", state.activeTuningId)
+    }
+
+    @Test
+    fun autoModeMatchesDropDsSixthStringByItsChangedNoteName() = runBlocking {
+        // Exact D2 - Drop-D's 6th string - would match no string at all in
+        // Standard tuning (its 6th string is E2), proving Auto-mode matching
+        // isn't hardcoded to standard's note set.
+        val d2Hz = Note.forMidiNumber(38).frequencyHz()
+        val state = TunerViewModel(
+            pitchEstimates = MutableStateFlow<PitchEstimate?>(PitchEstimate(d2Hz, confidence = 1f)),
+            referencePitch = MutableStateFlow(440f),
+            activeTuning = MutableStateFlow(BuiltInTunings.DROP_D)
+        ).state.first()
+
+        assertEquals("D2", state.nearestNote?.name)
+        assertEquals(setOf(6), state.tunedStringNumbers)
+    }
+
     // ---- Tuned-string tracking ------------------------------------------------
     // The target selector shows this in both modes as a "play through each
     // string" checklist (see TunerView's class doc), so a string reading in

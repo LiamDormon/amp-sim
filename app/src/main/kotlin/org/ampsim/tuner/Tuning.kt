@@ -12,7 +12,7 @@ data class TuningString(val stringNumber: Int, val positionalLabel: String, val 
 /** A named, ordered (low to high) set of target pitches for the tuner's manual mode. */
 data class Tuning(val id: String, val displayName: String, val strings: List<TuningString>)
 
-/** Built-in tunings. Currently only standard tuning; future alternate tunings extend [ALL]. */
+/** Built-in tunings. Currently standard and drop-D; future alternate tunings extend [ALL]. */
 object BuiltInTunings {
     val STANDARD = Tuning(
         id = "standard",
@@ -27,7 +27,21 @@ object BuiltInTunings {
         )
     )
 
-    val ALL: List<Tuning> = listOf(STANDARD)
+    /**
+     * Standard with the 6th string dropped a whole step, E2 -> D2; strings
+     * 1-5 unchanged. Derived from [STANDARD.strings] (filtered, then D2
+     * prepended) rather than re-listing all six notes, so the two tunings
+     * can't silently drift apart if [STANDARD] is ever tweaked - this relies
+     * on [STANDARD.strings] already being in low-to-high order.
+     */
+    val DROP_D = Tuning(
+        id = "drop-d",
+        displayName = "Drop D",
+        strings = listOf(TuningString(6, "6th String", Note.forMidiNumber(38))) + // D2
+            STANDARD.strings.filter { it.stringNumber != 6 }
+    )
+
+    val ALL: List<Tuning> = listOf(STANDARD, DROP_D)
 
     fun byId(id: String): Tuning = ALL.find { it.id == id } ?: STANDARD
 }

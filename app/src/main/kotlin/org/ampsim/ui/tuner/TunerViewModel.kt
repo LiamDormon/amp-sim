@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
+import org.ampsim.tuner.BuiltInTunings
 import org.ampsim.tuner.Note
 import org.ampsim.tuner.PitchEstimate
 import org.ampsim.tuner.Tuning
@@ -19,6 +20,8 @@ import org.ampsim.tuner.TunerMode
 /** Everything the Tuner tab renders, derived from [TunerViewModel.state]. */
 data class TunerState(
     val mode: TunerMode,
+    /** [Tuning.id] of the currently active tuning, so a picker widget can keep its selection in sync without owning tuning state itself. */
+    val activeTuningId: String = BuiltInTunings.STANDARD.id,
     val availableTargets: List<TuningString>,
     val detectedFrequencyHz: Float?,
     val hasSignal: Boolean,
@@ -113,6 +116,7 @@ class TunerViewModel(
         /** Seed for [TunerViewModel.state]'s `scan` - only [TunerState.tunedStringNumbers] (empty) matters, the rest is overwritten by the first real tick and the seed itself is dropped. */
         private val SEED_STATE = TunerState(
             mode = TunerMode.Auto,
+            activeTuningId = BuiltInTunings.STANDARD.id,
             availableTargets = emptyList(),
             detectedFrequencyHz = null,
             hasSignal = false,
@@ -164,6 +168,7 @@ private fun deriveState(tick: TunerTick, previouslyTuned: Set<Int>): TunerState 
 
     return TunerState(
         mode = mode,
+        activeTuningId = tuning.id,
         availableTargets = tuning.strings,
         detectedFrequencyHz = estimate?.frequencyHz,
         hasSignal = estimate != null,

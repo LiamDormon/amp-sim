@@ -2,6 +2,8 @@ package org.ampsim.ui.tuner
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import org.ampsim.tuner.BuiltInTunings
+import org.ampsim.tuner.Tuning
 import org.ampsim.tuner.TunerMode
 import org.ampsim.tuner.TuningString
 import org.gnome.adw.Toggle
@@ -9,7 +11,9 @@ import org.gnome.adw.ToggleGroup
 import org.gnome.glib.GLib
 import org.gnome.gtk.Align
 import org.gnome.gtk.Box
+import org.gnome.gtk.DropDown
 import org.gnome.gtk.Orientation
+import org.gnome.gtk.StringList
 
 private const val AUTO_TOGGLE_NAME = "auto"
 private const val MANUAL_TOGGLE_NAME = "manual"
@@ -29,8 +33,12 @@ private const val MANUAL_TOGGLE_NAME = "manual"
  */
 class TunerView(
     private val model: TunerViewModel,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val onTuningSelected: (Tuning) -> Unit = {}
 ) : Box(Orientation.VERTICAL, 18) {
+
+    private val tunings = BuiltInTunings.ALL
+    private val tuningSelector = DropDown(StringList(tunings.map { it.displayName }.toTypedArray()), null)
 
     private val modeGroup = ToggleGroup().apply {
         add(Toggle().apply { name = AUTO_TOGGLE_NAME; label = "Auto" })
@@ -43,7 +51,9 @@ class TunerView(
     private val targetSelector = TunerTargetSelector(onTargetSelected = model::selectManualTarget)
 
     private var suppressModeCallback = false
+    private var suppressTuningCallback = false
     private var lastTargets: List<TuningString> = emptyList()
+    private var lastTuningId: String? = null
 
     init {
         addCssClass("tuner-view")
@@ -54,12 +64,16 @@ class TunerView(
         marginStart = 18
         marginEnd = 18
 
+        tuningSelector.addCssClass("tuner-tuning-selector")
+        tuningSelector.halign = Align.CENTER
+
         val modeStrip = Box(Orientation.HORIZONTAL, 0).apply {
             addCssClass("tuner-mode-strip")
             halign = Align.CENTER
             append(modeGroup)
         }
 
+        append(tuningSelector)
         append(modeStrip)
         append(pitchDisplay)
         append(targetSelector)
@@ -74,6 +88,13 @@ class TunerView(
                 else -> model.selectAuto()
             }
         }
+
+        // Gtk.DropDown's ::activate signal only pops the popup open - it
+        // does not fire when the selection changes (unlike ParameterDropdown's
+        // choice-index widget, which reacts on it). The selection itself has
+        // to be observed via the "selected" property's notify signal, same
+        // idiom as modeGroup.onNotify("active-name") above.
+        tuningSelector.onNotify("selected") { handleTuningSelectionChanged(tuningSelector.getSelected()) }
 
         scope.launch {
             model.state.collect { state ->
@@ -110,6 +131,24 @@ class TunerView(
         suppressModeCallback = true
         modeGroup.activeName = if (manualMode != null) MANUAL_TOGGLE_NAME else AUTO_TOGGLE_NAME
         suppressModeCallback = false
+
+        // Same "only touch it when it actually changed" discipline as
+        // lastTargets above: an unconditional setSelected() every ~100ms
+        // tick risks the same spurious-reselection class of bug.
+        if (state.activeTuningId != lastTuningId) {
+            lastTuningId = state.activeTuningId
+            val tuningIndex = tunings.indexOfFirst { it.id == state.activeTuningId }
+            if (tuningIndex >= 0) {
+                suppressTuningCallback = true
+                tuningSelector.setSelected(tuningIndex)
+                suppressTuningCallback = false
+            }
+        }
+    }
+
+    private fun handleTuningSelectionChanged(index: Int) {
+        if (suppressTuningCallback) return
+        tunings.getOrNull(index)?.let(onTuningSelected)
     }
 
     // ── Test hooks ─────────────────────────────────────────────────────────
@@ -117,10 +156,21 @@ class TunerView(
     internal fun renderStateForTest(state: TunerState) = renderState(state)
     internal fun pitchDisplayWidget(): PitchDisplay = pitchDisplay
     internal fun targetSelectorWidget(): TunerTargetSelector = targetSelector
+    internal fun tuningSelectorWidget(): DropDown = tuningSelector
     internal fun simulateManualToggleActivated() {
         modeGroup.activeName = MANUAL_TOGGLE_NAME
     }
     internal fun simulateAutoToggleActivated() {
         modeGroup.activeName = AUTO_TOGGLE_NAME
+    }
+
+    /**
+     * setSelected() itself synchronously fires the real "notify::selected"
+     * listener wired above (GObject property notifications don't need a
+     * main-loop dispatch), so unlike [org.ampsim.ui.chain.ParameterDropdown.simulateSelect]
+     * this doesn't need to separately re-invoke the handler.
+     */
+    internal fun simulateTuningSelected(index: Int) {
+        tuningSelector.setSelected(index)
     }
 }

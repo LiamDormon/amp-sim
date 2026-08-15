@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.ampsim.tuner.BuiltInTunings
 import org.ampsim.tuner.PitchEstimate
+import org.ampsim.tuner.Tuning
 import org.ampsim.tuner.TunerMode
 import org.ampsim.tuner.TuningString
 import org.gnome.gtk.Gtk
@@ -114,5 +115,40 @@ class TunerViewTest {
         view.renderStateForTest(manualState(fourthString, tunedStringNumbers = setOf(6)))
         assertTrue(view.targetSelectorWidget().isChipTuned(6), "an earlier tuned mark must survive a mode/selection change")
         assertFalse(view.targetSelectorWidget().isChipTuned(4), "selecting a string doesn't itself mark it tuned")
+    }
+
+    @Test
+    fun selectingADifferentTuningInvokesTheCallback() {
+        val selected = mutableListOf<Tuning>()
+        val view = TunerView(
+            buildModel(),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            onTuningSelected = { selected.add(it) }
+        )
+
+        view.simulateTuningSelected(BuiltInTunings.ALL.indexOf(BuiltInTunings.DROP_D))
+
+        assertEquals(listOf(BuiltInTunings.DROP_D), selected)
+    }
+
+    /**
+     * Regression guard for the same class of feedback-loop bug
+     * [repeatedRerendersWithAnUnchangedTargetListDoNotResetTheSelectedChip]
+     * protects against: a programmatic dropdown sync must not re-fire the
+     * selection callback.
+     */
+    @Test
+    fun renderingStateWithADifferentActiveTuningIdSyncsTheDropdownWithoutFiringTheCallback() {
+        val selected = mutableListOf<Tuning>()
+        val view = TunerView(
+            buildModel(),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            onTuningSelected = { selected.add(it) }
+        )
+
+        view.renderStateForTest(autoState().copy(activeTuningId = "drop-d"))
+
+        assertEquals(BuiltInTunings.ALL.indexOf(BuiltInTunings.DROP_D), view.tuningSelectorWidget().getSelected())
+        assertTrue(selected.isEmpty(), "programmatic sync must not re-fire onTuningSelected")
     }
 }

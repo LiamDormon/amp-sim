@@ -7,7 +7,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -141,18 +140,19 @@ class App {
         profiles = profileRepository.profiles
     )
     /**
-     * [activeTuning] is deliberately a single-element flow today — only
-     * [BuiltInTunings.STANDARD] exists — so swapping in a real user-selected
-     * tuning later is a config/App.kt change only, not a [TunerViewModel]
-     * shape change. Mode/target selection always starts at
-     * [org.ampsim.tuner.TunerMode.Auto] on launch (see the mode-persistence
-     * collector in `main` for why the write side, not the restore side, is
-     * what's wired up for v1).
+     * [activeTuning] is resolved from the persisted [org.ampsim.model.TunerConfiguration.tuningId]
+     * via [BuiltInTunings.byId] (falling back to [BuiltInTunings.STANDARD] for
+     * an unrecognized id) on every config emission, so selecting a tuning in
+     * [bindTunerView]'s picker round-trips through config the same way
+     * [org.ampsim.model.TunerConfiguration.referencePitchHz] already does.
+     * Mode/target selection always starts at [org.ampsim.tuner.TunerMode.Auto]
+     * on launch (see the mode-persistence collector in `main` for why the
+     * write side, not the restore side, is what's wired up for v1).
      */
     val tunerViewModel = TunerViewModel(
         pitchEstimates = eventBus.pitchDetected().map { it.estimate },
         referencePitch = configManager.config.map { it.tuner.referencePitchHz },
-        activeTuning = flowOf(BuiltInTunings.STANDARD)
+        activeTuning = configManager.config.map { BuiltInTunings.byId(it.tuner.tuningId) }
     )
     private var tunerTabActive = false
     private var playbackEnabledBeforeTuner = true
@@ -547,9 +547,15 @@ class App {
         )
     )
 
-    /** Mount the Tuner tab, wiring mode/target selection straight into [tunerViewModel]. */
+    /** Mount the Tuner tab, wiring mode/target selection straight into [tunerViewModel] and tuning selection to the config store. */
     fun bindTunerView(window: AppWindow) = window.bindTunerView(
-        TunerView(model = tunerViewModel, scope = uiCoroutineScope)
+        TunerView(
+            model = tunerViewModel,
+            scope = uiCoroutineScope,
+            onTuningSelected = { tuning ->
+                configManager.updateConfig { it.copy(tuner = it.tuner.copy(tuningId = tuning.id)) }
+            }
+        )
     )
 
     /**

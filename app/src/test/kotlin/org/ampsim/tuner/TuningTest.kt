@@ -38,7 +38,32 @@ class TuningTest {
 
     @Test
     fun byIdFallsBackToStandardForAnUnknownId() {
-        assertEquals(BuiltInTunings.STANDARD, BuiltInTunings.byId("drop-d"))
+        assertEquals(BuiltInTunings.STANDARD, BuiltInTunings.byId("nonexistent"))
         assertEquals(BuiltInTunings.STANDARD, BuiltInTunings.byId("standard"))
+    }
+
+    @Test
+    fun byIdResolvesDropD() {
+        assertEquals(BuiltInTunings.DROP_D, BuiltInTunings.byId("drop-d"))
+    }
+
+    @Test
+    fun dropDOnlyChangesTheSixthStringFromStandard() {
+        val standard = BuiltInTunings.STANDARD.strings.associateBy { it.stringNumber }
+        val dropD = BuiltInTunings.DROP_D.strings.associateBy { it.stringNumber }
+
+        assertEquals(setOf(6, 5, 4, 3, 2, 1), dropD.keys)
+        for (stringNumber in 1..5) {
+            assertEquals(
+                standard.getValue(stringNumber),
+                dropD.getValue(stringNumber),
+                "string $stringNumber must be unchanged from standard tuning"
+            )
+        }
+        assertEquals("D2", dropD.getValue(6).note.name)
+        assertTrue(
+            abs(dropD.getValue(6).note.frequencyHz() - 73.42f) < 0.05f,
+            "expected D2 ~73.42 Hz, was ${dropD.getValue(6).note.frequencyHz()} Hz"
+        )
     }
 }
